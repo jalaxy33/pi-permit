@@ -157,7 +157,11 @@ export function collectContributions(
   return collected;
 }
 
-/** Path rules: later ones win by id, same as commands. */
+function addSource(sources: string[], source: string | undefined): void {
+  if (source && !sources.includes(source)) sources.push(source);
+}
+
+/** Path rules: later ones win by id. */
 export function resolvePathContributions(contributions: PathContribution[]): {
   rules: PathRule[];
   warnings: string[];
@@ -168,10 +172,10 @@ export function resolvePathContributions(contributions: PathContribution[]): {
   const byId = new Map<string, PathRule>();
 
   for (const contribution of contributions) {
-    if (contribution.source && !sources.includes(contribution.source)) sources.push(contribution.source);
+    addSource(sources, contribution.source);
     const id = contribution.rule?.id;
     if (!id) {
-      warnings.push(`ignore path rule without id from ${contribution.set}`);
+      warnings.push(`ignore rule without id from ${contribution.set}`);
       continue;
     }
     byId.set(id, contribution.rule);
@@ -180,7 +184,7 @@ export function resolvePathContributions(contributions: PathContribution[]): {
   return { rules: [...byId.values()], warnings, sources };
 }
 
-/** Later contributions win by rule id, across sections. */
+/** Command rules: later ones win by id, across sections. */
 export function resolveContributions(contributions: Contribution[]): {
   rules: ResolvedRules;
   warnings: string[];
@@ -191,11 +195,14 @@ export function resolveContributions(contributions: Contribution[]): {
   const byId = new Map<string, { section: Section; rule: Rule }>();
 
   for (const contribution of contributions) {
-    if (contribution.source && !sources.includes(contribution.source)) sources.push(contribution.source);
+    addSource(sources, contribution.source);
     const id = contribution.rule?.id;
-    if (!id) continue;
+    if (!id) {
+      warnings.push(`ignore rule without id from ${contribution.set}`);
+      continue;
+    }
     const previous = byId.get(id);
-    if (previous && previous.section === "deny" && contribution.section !== "deny") {
+    if (previous?.section === "deny" && contribution.section !== "deny") {
       warnings.push(`rule ${id} dropped from deny by ${contribution.set}`);
     }
     byId.set(id, { section: contribution.section, rule: contribution.rule });

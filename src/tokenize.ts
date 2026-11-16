@@ -23,6 +23,23 @@ function isSeparator(ch: string): boolean {
   return ch === ";" || ch === "&" || ch === "|" || ch === "\n";
 }
 
+/** Reads a quoted string starting at `start`; double quotes honour backslash escapes. */
+function readQuoted(input: string, start: number): { text: string; next: number } {
+  const quote = input[start];
+  let text = "";
+  let i = start + 1;
+  while (i < input.length && input[i] !== quote) {
+    if (quote === '"' && input[i] === "\\") {
+      text += input[i + 1] ?? "";
+      i += 2;
+      continue;
+    }
+    text += input[i];
+    i++;
+  }
+  return { text, next: i + 1 };
+}
+
 export function tokenize(input: string): SimpleCommand[] {
   const commands: SimpleCommand[] = [];
   const subs: string[] = [];
@@ -69,10 +86,9 @@ export function tokenize(input: string): SimpleCommand[] {
     while (i < input.length && !BLANK.test(input[i] as string) && !isSeparator(input[i] as string)) {
       const ch = input[i] as string;
       if (ch === "'" || ch === '"') {
-        const close = input.indexOf(ch, i + 1);
-        const stop = close === -1 ? input.length : close;
-        target += input.slice(i + 1, stop);
-        i = stop + 1;
+        const quoted = readQuoted(input, i);
+        target += quoted.text;
+        i = quoted.next;
         continue;
       }
       target += ch;
@@ -92,28 +108,11 @@ export function tokenize(input: string): SimpleCommand[] {
       continue;
     }
 
-    if (ch === "'") {
-      const close = input.indexOf("'", i + 1);
-      const stop = close === -1 ? input.length : close;
-      word += input.slice(i + 1, stop);
+    if (ch === "'" || ch === '"') {
+      const quoted = readQuoted(input, i);
+      word += quoted.text;
       inWord = true;
-      i = stop + 1;
-      continue;
-    }
-
-    if (ch === '"') {
-      i++;
-      while (i < input.length && input[i] !== '"') {
-        if (input[i] === "\\") {
-          word += input[i + 1] ?? "";
-          i += 2;
-          continue;
-        }
-        word += input[i];
-        i++;
-      }
-      inWord = true;
-      i++;
+      i = quoted.next;
       continue;
     }
 
@@ -146,13 +145,9 @@ export function tokenize(input: string): SimpleCommand[] {
       while (input[j] === " " || input[j] === "\t") j++;
       let delimiter = "";
       if (input[j] === "'" || input[j] === '"') {
-        const quote = input[j] as string;
-        j++;
-        while (j < input.length && input[j] !== quote) {
-          delimiter += input[j];
-          j++;
-        }
-        j++;
+        const quoted = readQuoted(input, j);
+        delimiter = quoted.text;
+        j = quoted.next;
       } else {
         while (j < input.length && !BLANK.test(input[j] as string) && !isSeparator(input[j] as string)) {
           delimiter += input[j];

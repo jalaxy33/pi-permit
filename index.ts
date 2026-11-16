@@ -71,6 +71,19 @@ export default async function permit(pi: ExtensionAPI) {
     reload(ctx.cwd, ctx.isProjectTrusted(), (message) => ctx.ui.notify(message, "warning"));
   });
 
+  const confirm = (
+    ctx: { hasUI: boolean; ui: any; abort: () => void },
+    request: { command: string; reason: string; grantKey?: string },
+  ) =>
+    ask({
+      ...request,
+      hasUI: ctx.hasUI,
+      grants: sessionGrants,
+      custom: typeof ctx.ui.custom === "function" ? (factory: unknown) => ctx.ui.custom(factory) : undefined,
+      select: (title, options) => ctx.ui.select(title, options),
+      abort: () => ctx.abort(),
+    });
+
   pi.on("tool_call", async (event, ctx) => {
     if (config.fatal) return { block: true, reason: config.fatal };
 
@@ -85,15 +98,10 @@ export default async function permit(pi: ExtensionAPI) {
     if (hit && !sessionGrants.has(`outside:${hit.path}`)) {
       const reason = `outside workspace: ${hit.path}`;
       if (hit.mode === "block") return { block: true, reason: `pi-permit: ${reason}` };
-      const outcome = await ask({
+      const outcome = await confirm(ctx, {
         command: targets?.label ?? hit.path,
         reason,
-        hasUI: ctx.hasUI,
-        grants: sessionGrants,
         grantKey: `outside:${hit.path}`,
-        custom: typeof ctx.ui.custom === "function" ? (factory) => ctx.ui.custom(factory) : undefined,
-        select: (title, options) => ctx.ui.select(title, options),
-        abort: () => ctx.abort(),
       });
       if (outcome.block) return { block: true, reason: outcome.reason };
     }
@@ -117,15 +125,7 @@ export default async function permit(pi: ExtensionAPI) {
       };
     }
 
-    const outcome = await ask({
-      command,
-      reason,
-      hasUI: ctx.hasUI,
-      grants: sessionGrants,
-      custom: typeof ctx.ui.custom === "function" ? (factory) => ctx.ui.custom(factory) : undefined,
-      select: (title, options) => ctx.ui.select(title, options),
-      abort: () => ctx.abort(),
-    });
+    const outcome = await confirm(ctx, { command, reason });
     return outcome.block ? { block: true, reason: outcome.reason } : undefined;
   });
 

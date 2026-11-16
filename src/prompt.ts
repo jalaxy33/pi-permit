@@ -73,34 +73,29 @@ interface Theme {
   bold?: (text: string) => string;
 }
 
-/** Theme colors, with raw ANSI fallbacks for themes that return text unchanged. */
+const RAW_FG: Record<string, string> = { error: "91", warning: "93", dim: "90" };
+
+/** Theme colors, falling back to raw ANSI when the theme returns text unchanged. */
 function paint(theme: unknown) {
   const api = (theme ?? {}) as Theme;
-  const raw: Record<string, string> = { error: "\u001b[91m", warning: "\u001b[93m", dim: "\u001b[90m" };
+  const call = (fn: Theme["fg"], ...args: string[]): string | undefined => {
+    try {
+      return typeof fn === "function" ? fn(...args) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
 
   const fg = (name: string, text: string): string => {
-    if (typeof api.fg === "function") {
-      try {
-        const themed = api.fg(name, text);
-        if (themed !== text) return themed;
-      } catch {
-        // fall through to raw
-      }
-    }
-    const code = raw[name];
-    return code ? `${code}${text}\u001b[39m` : text;
+    const themed = call(api.fg, name, text);
+    if (themed && themed !== text) return themed;
+    const code = RAW_FG[name];
+    return code ? `\u001b[${code}m${text}\u001b[39m` : text;
   };
 
   const bold = (text: string): string => {
-    if (typeof api.bold === "function") {
-      try {
-        const themed = api.bold(text);
-        if (themed !== text) return themed;
-      } catch {
-        // fall through to raw
-      }
-    }
-    return `\u001b[1m${text}\u001b[22m`;
+    const themed = call(api.bold, text);
+    return themed && themed !== text ? themed : `\u001b[1m${text}\u001b[22m`;
   };
 
   return { fg, bold };

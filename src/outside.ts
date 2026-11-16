@@ -1,8 +1,7 @@
 /** Gate for paths outside the session working directory. */
 
-import { existsSync, realpathSync } from "node:fs";
-import { isAbsolute, normalize, relative, resolve, sep } from "node:path";
-import { expandTilde, globToRegExp } from "./paths";
+import { isAbsolute, sep } from "node:path";
+import { expandTilde, globToRegExp, resolveCandidate } from "./paths";
 import type { OutsideCwdConfig } from "./types";
 
 export type OutsideMode = "allow" | "ask" | "block";
@@ -28,27 +27,18 @@ export const DEFAULT_ALLOW_PATHS = [
 ];
 
 export function compileOutside(config?: OutsideCwdConfig): OutsideRule {
-  const mode = config?.mode ?? "ask";
   const patterns = [...DEFAULT_ALLOW_PATHS, ...(config?.allowPaths ?? [])];
-  const allow: CompiledPattern[] = patterns.map((pattern) => ({
-    kind: pattern.startsWith("~") || isAbsolute(pattern) ? "abs" : "rel",
-    re: globToRegExp(expandTilde(pattern)),
-  }));
-  return { mode, allow };
+  return {
+    mode: config?.mode ?? "ask",
+    allow: patterns.map((pattern) => ({
+      kind: pattern.startsWith("~") || isAbsolute(pattern) ? "abs" : "rel",
+      re: globToRegExp(expandTilde(pattern)),
+    })),
+  };
 }
 
 function insideCwd(abs: string, cwd: string): boolean {
-  if (abs === cwd) return true;
-  return abs.startsWith(cwd.endsWith(sep) ? cwd : `${cwd}${sep}`);
-}
-
-function allowedBy(rule: OutsideRule, abs: string, real: string | undefined, cwd: string): boolean {
-  const rel = relative(cwd, abs);
-  const relReal = real ? relative(cwd, real) : undefined;
-  return rule.allow.some((pattern) => {
-    if (pattern.kind === "abs") return pattern.re.test(abs) || (real ? pattern.re.test(real) : false);
-    return pattern.re.test(rel) || (relReal ? pattern.re.test(relReal) : false);
-  });
+  return abs === cwd || abs.startsWith(cwd.endsWith(sep) ? cwd : `${cwd}${sep}`);
 }
 
 export interface OutsideHit {
@@ -60,21 +50,14 @@ export interface OutsideHit {
 export function checkOutside(rule: OutsideRule, rawPath: string, cwd: string): OutsideHit | undefined {
   if (rule.mode === "allow") return undefined;
 
-  const expanded = expandTilde(rawPath);
-  const abs = normalize(isAbsolute(expanded) ? expanded : resolve(cwd, expanded));
-  const real = existsSync(abs) ? safeRealpath(abs) : undefined;
-
-  const outside = !insideCwd(abs, cwd) && (real ? !insideCwd(real, cwd) : true);
+  const candidate = resolveCandidate(rawPath, cwd);
+  const outside = !insideCwd(candidate.abs, cwd) && (candidate.real ? !insideCwd(candidate.real, cwd) : true);
   if (!outside) return undefined;
-  if (allowedBy(rule, abs, real, cwd)) return undefined;
 
-  return { path: abs, mode: rule.mode };
-}
+  const allowed = rule.allow.some((pattern) => {
+    const targets = pattern.kind === "abs" ? [candidate.abs, candidate.real] : [candidate.rel, candidate.relReal];
+    return targets.some((value) => typeof value === "string" && pattern.re.test(value));
+  });
 
-function safeRealpath(path: string): string | undefined {
-  try {
-    return realpathSync(path);
-  } catch {
-    return undefined;
-  }
+  return allowed ? undefined : { path: candidate.abs, mode: rule.mode };
 }

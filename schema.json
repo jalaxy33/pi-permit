@@ -41,20 +41,7 @@
       "$ref": "#/$defs/commands"
     },
     "paths": {
-      "oneOf": [
-        {
-          "$ref": "#/$defs/pathRules"
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "rules": {
-              "$ref": "#/$defs/pathRules"
-            }
-          }
-        }
-      ]
+      "$ref": "#/$defs/pathRules"
     },
     "outsideCwd": {
       "$ref": "#/$defs/outsideCwd"

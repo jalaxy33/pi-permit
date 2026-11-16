@@ -33,14 +33,8 @@ function pickOutside(scopes: ConfigFile[]) {
   return merged.mode || merged.allowPaths ? merged : undefined;
 }
 
-/** `paths` is an array, but `{ rules: [...] }` is accepted for older configs. */
 function pathRulesOf(config: ConfigFile): PathRule[] {
-  const raw = config.paths as unknown;
-  if (Array.isArray(raw)) return raw as PathRule[];
-  if (raw && typeof raw === "object" && Array.isArray((raw as { rules?: unknown }).rules)) {
-    return (raw as { rules: PathRule[] }).rules;
-  }
-  return [];
+  return Array.isArray(config.paths) ? config.paths : [];
 }
 
 export function loadConfig(cwd: string, trusted: boolean): ResolvedConfig {
