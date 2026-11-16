@@ -35,7 +35,7 @@ export interface CollectedRules {
 const SECTIONS: Section[] = ["deny", "ask", "allow"];
 
 export function defaultConfigPath(): string {
-  return fileURLToPath(new URL("../configs/default.json", import.meta.url));
+  return fileURLToPath(new URL("../policy/manifest.json", import.meta.url));
 }
 
 export function expandHome(path: string): string {

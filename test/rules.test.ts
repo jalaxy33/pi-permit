@@ -33,13 +33,13 @@ describe("builtin manifest", () => {
     expect(Object.keys(builtin.sets ?? {})).toEqual(["deny", "basic", "strict"]);
   });
 
-  test("set entries point at rule files under rulesets/", () => {
+  test("set entries point at sibling rule files", () => {
     const rules = resolve(["deny", "basic", "strict"]);
     expect(rules.warnings).toEqual([]);
     expect(rules.sources).toEqual([
-      join(rulesDir, "rulesets", "deny.json"),
-      join(rulesDir, "rulesets", "basic.json"),
-      join(rulesDir, "rulesets", "strict.json"),
+      join(rulesDir, "deny.json"),
+      join(rulesDir, "basic.json"),
+      join(rulesDir, "strict.json"),
     ]);
   });
 

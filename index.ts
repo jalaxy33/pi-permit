@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig, type ResolvedConfig } from "./src/config";
 import { decide } from "./src/decide";
+import { cwdAfter, extractTargets } from "./src/ops";
 import { checkPath } from "./src/paths";
 import { ask, SessionGrants } from "./src/prompt";
 import { tokenize } from "./src/tokenize";
@@ -34,12 +35,13 @@ function checkToolPaths(
   const command = input.command;
   if (typeof command !== "string" || command.trim() === "") return undefined;
 
+  let current = cwd;
   for (const simple of tokenize(command)) {
-    for (const redirect of simple.redirects) {
-      const op: PathOp = redirect.op === "<" ? "read" : "write";
-      const blocked = checkPath(config.paths, redirect.target, cwd, op);
+    for (const target of extractTargets(simple, current)) {
+      const blocked = checkPath(config.paths, target.path, current, target.op);
       if (blocked) return blocked.reason;
     }
+    current = cwdAfter(simple, current);
   }
   return undefined;
 }

@@ -7,8 +7,8 @@
     "strict"
   ],
   "sets": {
-    "deny": "./rulesets/deny.json",
-    "basic": "./rulesets/basic.json",
-    "strict": "./rulesets/strict.json"
+    "deny": "./deny.json",
+    "basic": "./basic.json",
+    "strict": "./strict.json"
   }
 }

@@ -163,6 +163,24 @@ describe("path rules", () => {
     expect(result?.reason).toContain(".env");
   });
 
+  test("blocks reading .env as a bash operand", async () => {
+    const env = setup({ hasUI: true, keys: [] });
+    await permit(env.stub);
+    expect((await env.call(`cat ${join(dir, ".env")}`))?.block).toBe(true);
+  });
+
+  test("blocks deleting .env", async () => {
+    const env = setup({ hasUI: true, keys: [] });
+    await permit(env.stub);
+    expect((await env.call(`rm -f ${join(dir, ".env")}`))?.block).toBe(true);
+  });
+
+  test("blocks a copy into .env", async () => {
+    const env = setup({ hasUI: true, keys: [] });
+    await permit(env.stub);
+    expect((await env.call(`cp ${join(dir, ".env.example")} ${join(dir, ".env")}`))?.block).toBe(true);
+  });
+
   test("leaves unrelated paths alone", async () => {
     const env = setup({ hasUI: true, keys: [] });
     await permit(env.stub);

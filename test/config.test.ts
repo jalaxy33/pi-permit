@@ -11,7 +11,7 @@ describe("config", () => {
     expect(config.commands.deny.length).toBe(3);
     expect(config.commands.ask.length).toBeGreaterThan(30);
     expect(config.commands.allow.length).toBe(1);
-    expect(config.sources[0]?.endsWith("configs/default.json")).toBe(true);
+    expect(config.sources[0]?.endsWith("policy/manifest.json")).toBe(true);
     expect(config.paths.length).toBeGreaterThan(0);
   });
 
@@ -23,6 +23,6 @@ describe("config", () => {
   test("does not read project config when the project is not trusted", () => {
     const untrusted = loadConfig("/nonexistent-cwd", false);
     expect(untrusted.sources.some((path) => path.includes("/nonexistent-cwd/"))).toBe(false);
-    expect(untrusted.sources.every((path) => path.includes("/configs/"))).toBe(true);
+    expect(untrusted.sources.every((path) => path.includes("/policy/"))).toBe(true);
   });
 });
