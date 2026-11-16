@@ -2,6 +2,8 @@
 
 A permission gate for pi. Every tool call gets one of three answers: run it, ask the user, or block it.
 
+Repository: <https://github.com/jalaxy33/pi-permit>
+
 It looks at three things, in this order:
 
 1. **Protected paths** — file tools and bash commands are resolved to absolute paths and matched against path rules. A match blocks, without asking.
@@ -10,10 +12,14 @@ It looks at three things, in this order:
 
 ## Install
 
-Add the package to `~/.pi/agent/settings.json`. Relative paths resolve from that file:
+```bash
+pi install git:github.com/jalaxy33/pi-permit
+```
 
-```json
-{ "packages": ["./local-packages/pi-permit"] }
+Pi clones the repository into its package directory and adds it to `~/.pi/agent/settings.json`. Pin a ref with `@<tag-or-commit>`. For a local checkout instead, point at the directory:
+
+```bash
+pi install ~/.pi/agent/local-packages/pi-permit
 ```
 
 Then run `/reload`. To check what was loaded, run `/permit`: it lists the rule counts and the files they came from. `/permit:reload` re-reads the config without restarting pi.
@@ -43,7 +49,7 @@ All of them use the same fields. Priority, lowest to highest: shipped policy, th
 
 ```json
 {
-  "$schema": "/home/you/.pi/agent/local-packages/pi-permit/schema.json",
+  "$schema": "https://raw.githubusercontent.com/jalaxy33/pi-permit/main/schema.json",
   "enabled": { "commands": true, "paths": true },
   "defaultRules": ["deny", "basic", "strict", "./rules/mine.json"],
   "sets": { "mine": "./rules/mine.json" },
@@ -57,7 +63,7 @@ All of them use the same fields. Priority, lowest to highest: shipped policy, th
 }
 ```
 
-The package ships a JSON schema; point `$schema` at it (absolute path, as above) to get field completion and early warnings in your editor.
+The package ships a JSON schema. Point `$schema` at the copy you installed, or at the one in the repository (`https://raw.githubusercontent.com/jalaxy33/pi-permit/main/schema.json`), to get field completion and early warnings in your editor.
 
 ### `defaultRules`
 
@@ -159,4 +165,4 @@ bun test              # 133 cases
 bun test test/gate.test.ts
 ```
 
-Test-only symlinks for `pi-tui`, `pi-coding-agent` and `ajv` live in `node_modules/` and are gitignored.
+`pi-tui`, `pi-coding-agent` and `ajv` resolve from symlinks in `node_modules/`, which is gitignored. The package itself declares `pi-tui` and `pi-coding-agent` as peer dependencies; pi provides them at runtime.
