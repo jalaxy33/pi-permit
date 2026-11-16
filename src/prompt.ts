@@ -19,6 +19,9 @@ const KEYS: Record<string, Choice> = {
 };
 
 const TOGGLE_KEYS = new Set(["o", "O", "\u000f"]);
+/** Enter maps to allow once; change to "deny" for a fail-closed default. */
+const ENTER_CHOICE: Choice = "allow";
+const ENTER_KEYS = new Set(["\r", "\n"]);
 const VIEWPORT_ROWS = 12;
 const EXPANDED_ROWS = 40;
 
@@ -174,10 +177,11 @@ function createPromptComponent(
       const below = rows.length - scroll - visible.length;
 
       const toggle = expanded ? "o collapse" : "o expand";
+      const allow = ENTER_CHOICE === "allow" ? "y/Enter allow" : "y allow · Enter deny";
       const variants = [
-        `y allow · a session · n deny · s stop · esc cancel${maxScroll > 0 ? " · j/k scroll" : ""} · ${toggle}`,
-        `y allow · a session · n deny · s stop · esc${maxScroll > 0 ? " · j/k" : ""} · ${toggle}`,
-        `y/a/n/s${maxScroll > 0 ? " · j/k" : ""} · esc · ${toggle}`,
+        `${allow} · a session · n deny · s stop · esc cancel${maxScroll > 0 ? " · j/k scroll" : ""} · ${toggle}`,
+        `${allow} · a session · n deny · s stop · esc${maxScroll > 0 ? " · j/k" : ""} · ${toggle}`,
+        `y/Enter · a · n · s${maxScroll > 0 ? " · j/k" : ""} · esc · ${toggle}`,
       ];
       const keyHint = variants.find((candidate) => candidate.length <= w - 2) ?? variants[variants.length - 1];
       hint.setText(dim(` ${keyHint}`));
@@ -210,6 +214,10 @@ function createPromptComponent(
       }
       if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) {
         done("deny");
+        return;
+      }
+      if (ENTER_KEYS.has(data) || matchesKey(data, Key.enter)) {
+        done(ENTER_CHOICE);
         return;
       }
       const choice = chooseFromKey(data);

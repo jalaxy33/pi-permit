@@ -5,128 +5,264 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
-    "version": { "type": "number" },
-    "description": { "type": "string" },
+    "$schema": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
     "enabled": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "commands": { "type": "boolean" },
-        "paths": { "type": "boolean" }
+        "commands": {
+          "type": "boolean"
+        },
+        "paths": {
+          "type": "boolean"
+        }
       }
     },
     "defaultRules": {
       "description": "Set names or rule file paths, applied in order. Later entries win by rule id.",
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "sets": {
       "description": "Named rule sets. A set is a rule file path or inline rules.",
       "type": "object",
-      "additionalProperties": { "$ref": "#/$defs/setRef" }
+      "additionalProperties": {
+        "$ref": "#/$defs/setRef"
+      }
     },
-    "commands": { "$ref": "#/$defs/commands" },
+    "commands": {
+      "$ref": "#/$defs/commands"
+    },
     "paths": {
       "oneOf": [
-        { "$ref": "#/$defs/pathRules" },
+        {
+          "$ref": "#/$defs/pathRules"
+        },
         {
           "type": "object",
           "additionalProperties": false,
-          "properties": { "rules": { "$ref": "#/$defs/pathRules" } }
+          "properties": {
+            "rules": {
+              "$ref": "#/$defs/pathRules"
+            }
+          }
         }
       ]
     },
-    "outsideCwd": { "$ref": "#/$defs/outsideCwd" }
+    "outsideCwd": {
+      "$ref": "#/$defs/outsideCwd"
+    }
   },
   "$defs": {
     "commands": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "deny": { "type": "array", "items": { "$ref": "#/$defs/commandRule" } },
-        "ask": { "type": "array", "items": { "$ref": "#/$defs/commandRule" } },
-        "allow": { "type": "array", "items": { "$ref": "#/$defs/commandRule" } }
+        "deny": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/commandRule"
+          }
+        },
+        "ask": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/commandRule"
+          }
+        },
+        "allow": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/commandRule"
+          }
+        }
       }
     },
     "commandRule": {
       "type": "object",
-      "required": ["id", "program"],
+      "required": [
+        "id",
+        "program"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
         "program": {
           "description": "Program name(s); `*` wildcard allowed (e.g. mkfs.*).",
           "oneOf": [
-            { "type": "string" },
-            { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            }
           ]
         },
         "args": {
           "description": "Matches when any of these appears as a positional argument.",
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
-        "anyFlag": { "type": "array", "items": { "type": "string" } },
-        "allFlags": { "type": "array", "items": { "type": "string" } },
-        "unlessFlag": { "type": "array", "items": { "type": "string" } },
+        "anyFlag": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allFlags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unlessFlag": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "argvRegex": {
           "description": "Regex over the joined argv of one simple command.",
           "type": "string"
         },
-        "reason": { "type": "string" },
-        "terminate": { "type": "boolean" }
+        "reason": {
+          "type": "string"
+        },
+        "terminate": {
+          "type": "boolean"
+        }
       }
     },
     "pathRules": {
       "type": "array",
-      "items": { "$ref": "#/$defs/pathRule" }
+      "items": {
+        "$ref": "#/$defs/pathRule"
+      }
     },
     "pathRule": {
       "type": "object",
-      "required": ["id", "patterns"],
+      "required": [
+        "id",
+        "patterns"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
         "patterns": {
           "description": "Globs. No slash: basename anywhere. `~` or `/`: absolute. Otherwise relative to the project.",
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "minItems": 1
         },
-        "except": { "type": "array", "items": { "type": "string" } },
-        "protection": { "enum": ["block", "read-only"] },
-        "ops": { "type": "array", "items": { "enum": ["read", "write", "delete"] } },
+        "except": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "protection": {
+          "enum": [
+            "block",
+            "read-only"
+          ]
+        },
+        "ops": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "read",
+              "write",
+              "delete"
+            ]
+          }
+        },
         "onlyIfExists": {
           "description": "Only protect paths that already exist. Default false.",
           "type": "boolean"
         },
-        "message": { "type": "string" }
+        "message": {
+          "type": "string"
+        }
       }
     },
     "setRef": {
-      "oneOf": [{ "type": "string" }, { "$ref": "#/$defs/setInline" }]
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/setInline"
+        }
+      ]
     },
     "setInline": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "description": { "type": "string" },
-        "deny": { "type": "array", "items": { "$ref": "#/$defs/commandRule" } },
-        "ask": { "type": "array", "items": { "$ref": "#/$defs/commandRule" } },
-        "allow": { "type": "array", "items": { "$ref": "#/$defs/commandRule" } },
-        "paths": { "$ref": "#/$defs/pathRules" }
+        "description": {
+          "type": "string"
+        },
+        "deny": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/commandRule"
+          }
+        },
+        "ask": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/commandRule"
+          }
+        },
+        "allow": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/commandRule"
+          }
+        },
+        "paths": {
+          "$ref": "#/$defs/pathRules"
+        }
       }
     },
     "outsideCwd": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "mode": { "enum": ["allow", "ask", "block"] },
+        "mode": {
+          "enum": [
+            "allow",
+            "ask",
+            "block"
+          ]
+        },
         "allowPaths": {
           "description": "Extra globs that stay allowed outside the workspace.",
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         }
       }
     }

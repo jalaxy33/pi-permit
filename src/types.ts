@@ -54,7 +54,6 @@ export type RuleSetRef =
   | (CommandsSection & { description?: string; paths?: PathRule[] });
 
 export interface RuleFile {
-  version?: number;
   description?: string;
   defaultRules?: string[];
   sets?: Record<string, RuleSetRef>;

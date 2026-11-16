@@ -117,7 +117,8 @@ describe("prompt rendering", () => {
     const text = captured.join("\n");
     expect(text).toContain("↓ 18 more");
     expect(text).toContain("n deny");
-    expect(text).toContain("esc cancel");
+    expect(text).toContain("y/Enter allow");
+    expect(text).toContain("esc");
   });
 
   test("arrows do not deny by accident", async () => {
@@ -165,10 +166,16 @@ describe("key handling", () => {
     return { result, done };
   }
 
-  test("enter does nothing, so a later key still decides", async () => {
-    const env = feed(["\r", "\n", "n"]);
+  test("enter allows once", async () => {
+    const env = feed(["\r"]);
     await env.done;
-    expect(env.result.value).toBe("deny");
+    expect(env.result.value).toBe("allow");
+  });
+
+  test("newline from a paste also allows once", async () => {
+    const env = feed(["\n"]);
+    await env.done;
+    expect(env.result.value).toBe("allow");
   });
 
   test("ctrl+c denies", async () => {
@@ -218,7 +225,7 @@ describe("layout", () => {
         }),
     });
     const hint = lines.find((line) => line.includes("esc cancel")) ?? "";
-    for (const key of ["y allow", "a session", "n deny", "s stop"]) {
+    for (const key of ["y/Enter allow", "a session", "n deny", "s stop"]) {
       expect(hint).toContain(key);
     }
   });
