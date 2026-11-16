@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "Command permission gate for pi",
+  "exports": {
+    ".": "./index.ts",
+    "./schema.json": "./schema.json"
+  },
   "pi": {
     "extensions": [
       "./index.ts"
@@ -12,5 +16,9 @@
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
   }
 }

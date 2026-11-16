@@ -1,4 +1,5 @@
 {
+  "$schema": "../schema.json",
   "description": "Everything from basic plus ordinary destructive operations. Expect prompts during normal work.",
   "commands": {
     "ask": [

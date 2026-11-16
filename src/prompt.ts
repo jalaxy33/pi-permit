@@ -135,6 +135,7 @@ function createPromptComponent(
   let scroll = 0;
 
   const container = new Container();
+  const hint = new Text("", 0, 0);
   const topBorder = new Text("", 0, 0);
   const body = new Text("", 1, 0);
   const bottomBorder = new Text("", 0, 0);
@@ -150,9 +151,7 @@ function createPromptComponent(
   container.addChild(new Spacer(1));
   container.addChild(new Text(" Allow execution?", 0, 0));
   container.addChild(new Spacer(1));
-  container.addChild(
-    new Text(dim(" y allow · a session · n deny · s stop · esc cancel · j/k scroll · o all"), 0, 0),
-  );
+  container.addChild(hint);
   container.addChild(new DynamicBorder((text: string) => fg("error", text)));
 
   const requestRender = () => (tui as { requestRender?: () => void } | undefined)?.requestRender?.();
@@ -173,6 +172,15 @@ function createPromptComponent(
       const visible = rows.slice(scroll, scroll + viewport);
       const above = scroll;
       const below = rows.length - scroll - visible.length;
+
+      const toggle = expanded ? "o collapse" : "o expand";
+      const variants = [
+        `y allow · a session · n deny · s stop · esc cancel${maxScroll > 0 ? " · j/k scroll" : ""} · ${toggle}`,
+        `y allow · a session · n deny · s stop · esc${maxScroll > 0 ? " · j/k" : ""} · ${toggle}`,
+        `y/a/n/s${maxScroll > 0 ? " · j/k" : ""} · esc · ${toggle}`,
+      ];
+      const keyHint = variants.find((candidate) => candidate.length <= w - 2) ?? variants[variants.length - 1];
+      hint.setText(dim(` ${keyHint}`));
 
       topBorder.setText(rule(w, above > 0 ? ` ↑ ${above} more ` : "", dim));
       body.setText(visible.join("\n"));

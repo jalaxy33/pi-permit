@@ -1,4 +1,5 @@
 {
+  "$schema": "../schema.json",
   "version": 1,
   "description": "Default configuration: which rule sets exist and which are enabled. Shipped with pi-permit; extend it in ~/.pi/agent/permit.json.",
   "defaultRules": [
