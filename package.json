@@ -1,0 +1,10 @@
+{
+  "name": "pi-permit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Command permission gate for pi",
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}
