@@ -126,15 +126,18 @@ export function checkPath(
   rawPath: string,
   cwd: string,
   op: PathOp,
+  options: { basenameOnly?: boolean } = {},
 ): PathBlock | undefined {
   const candidate = resolveCandidate(rawPath, cwd);
+  const testable = (pattern: CompiledPathRule["compiled"][number]) =>
+    !options.basenameOnly || pattern.kind === "base";
 
   for (const rule of rules) {
     const ops = rule.ops ?? ALL_OPS;
     if (!ops.includes(op)) continue;
-    if (rule.onlyIfExists && !candidate.exists) continue;
-    if (rule.compiledExcept.some((pattern) => patternMatches(pattern, candidate))) continue;
-    if (!rule.compiled.some((pattern) => patternMatches(pattern, candidate))) continue;
+    if (rule.onlyIfExists && !candidate.exists && !options.basenameOnly) continue;
+    if (rule.compiledExcept.some((pattern) => testable(pattern) && patternMatches(pattern, candidate))) continue;
+    if (!rule.compiled.some((pattern) => testable(pattern) && patternMatches(pattern, candidate))) continue;
     if ((rule.protection ?? "block") === "read-only" && op === "read") continue;
     return {
       rule: rule.id,

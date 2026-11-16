@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import permit from "../index";
 
@@ -185,5 +185,45 @@ describe("path rules", () => {
     const env = setup({ hasUI: true, keys: [] });
     await permit(env.stub);
     expect(await env.callTool("read", { path: join(dir, "notes.txt") })).toBeUndefined();
+  });
+});
+
+describe("outside workspace gate", () => {
+  const outside = join(homedir(), "pi-permit-outside-file.txt");
+
+  test("asks before reading outside the workspace", async () => {
+    const env = setup({ hasUI: true, keys: ["n"] });
+    await permit(env.stub);
+    const result = await env.callTool("read", { path: outside });
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toContain("outside workspace");
+    expect(env.asked.length).toBe(1);
+  });
+
+  test("allows the same read when the prompt is approved", async () => {
+    const env = setup({ hasUI: true, keys: ["y"] });
+    await permit(env.stub);
+    expect(await env.callTool("read", { path: outside })).toBeUndefined();
+  });
+
+  test("a session grant covers later reads of the same path", async () => {
+    const env = setup({ hasUI: true, keys: ["a"] });
+    await permit(env.stub);
+    expect(await env.callTool("read", { path: outside })).toBeUndefined();
+    expect(await env.callTool("read", { path: outside })).toBeUndefined();
+    expect(env.asked.length).toBe(1);
+  });
+
+  test("does not prompt for paths inside the workspace", async () => {
+    const env = setup({ hasUI: true, keys: [] });
+    await permit(env.stub);
+    expect(await env.callTool("read", { path: "/tmp/pi-permit-inside.txt" })).toBeUndefined();
+    expect(env.asked).toEqual([]);
+  });
+
+  test("blocks without a UI", async () => {
+    const env = setup({ hasUI: false });
+    await permit(env.stub);
+    expect((await env.callTool("read", { path: outside }))?.block).toBe(true);
   });
 });

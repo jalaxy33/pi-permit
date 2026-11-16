@@ -1,10 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig, type ResolvedConfig } from "./src/config";
 import { decide } from "./src/decide";
-import { cwdAfter, extractTargets } from "./src/ops";
+import { collectTargets } from "./src/ops";
 import { checkPath } from "./src/paths";
+import { checkOutside } from "./src/outside";
 import { ask, SessionGrants } from "./src/prompt";
-import { tokenize } from "./src/tokenize";
 import type { PathOp } from "./src/types";
 
 const GATED_TOOLS = new Set(["bash", "powershell"]);
@@ -17,38 +17,49 @@ const FILE_TOOL_OPS: Record<string, PathOp> = {
   edit: "write",
 };
 
-/** Path rules for file tools and for bash redirections (`> file`, `< file`). */
-function checkToolPaths(
-  config: ResolvedConfig,
-  toolName: string,
-  input: Record<string, unknown>,
-  cwd: string,
-): string | undefined {
+interface ToolTargets {
+  paths: Array<{ path: string; op: PathOp; basenameOnly?: boolean }>;
+  /** Human-readable subject used in the confirmation prompt. */
+  label: string;
+}
+
+function toolTargets(toolName: string, input: Record<string, unknown>, cwd: string): ToolTargets | undefined {
   const fileOp = FILE_TOOL_OPS[toolName];
   if (fileOp) {
     const raw = String(input.path ?? input.file_path ?? "").trim();
     if (!raw) return undefined;
-    return checkPath(config.paths, raw, cwd, fileOp)?.reason;
+    return { paths: [{ path: raw, op: fileOp }], label: `${toolName} ${raw}` };
   }
 
   if (!GATED_TOOLS.has(toolName)) return undefined;
   const command = input.command;
   if (typeof command !== "string" || command.trim() === "") return undefined;
+  return { paths: collectTargets(command, cwd), label: command };
+}
 
-  let current = cwd;
-  for (const simple of tokenize(command)) {
-    for (const target of extractTargets(simple, current)) {
-      const blocked = checkPath(config.paths, target.path, current, target.op);
-      if (blocked) return blocked.reason;
-    }
-    current = cwdAfter(simple, current);
+/** Path rules: protected files always block, whatever the cwd. */
+function blockedByRules(config: ResolvedConfig, targets: ToolTargets, cwd: string): string | undefined {
+  for (const target of targets.paths) {
+    const blocked = checkPath(config.paths, target.path, cwd, target.op, {
+      basenameOnly: target.basenameOnly,
+    });
+    if (blocked) return blocked.reason;
+  }
+  return undefined;
+}
+
+/** Outside-cwd gate: returns a path that needs a decision, when any. */
+function outsideHit(config: ResolvedConfig, targets: ToolTargets, cwd: string) {
+  for (const target of targets.paths) {
+    const hit = checkOutside(config.outside, target.path, cwd);
+    if (hit) return hit;
   }
   return undefined;
 }
 
 export default async function permit(pi: ExtensionAPI) {
   let config: ResolvedConfig = loadConfig(process.cwd(), false);
-  const grants = new SessionGrants();
+  const sessionGrants = new SessionGrants();
 
   const reload = (cwd: string, trusted: boolean, notify: (message: string) => void) => {
     config = loadConfig(cwd, trusted);
@@ -56,16 +67,35 @@ export default async function permit(pi: ExtensionAPI) {
   };
 
   pi.on("session_start", (_event, ctx) => {
-    grants.clear();
+    sessionGrants.clear();
     reload(ctx.cwd, ctx.isProjectTrusted(), (message) => ctx.ui.notify(message, "warning"));
   });
 
   pi.on("tool_call", async (event, ctx) => {
     if (config.fatal) return { block: true, reason: config.fatal };
 
-    if (config.enabled.paths) {
-      const blocked = checkToolPaths(config, event.toolName, event.input as Record<string, unknown>, ctx.cwd);
+    const targets = toolTargets(event.toolName, event.input as Record<string, unknown>, ctx.cwd);
+
+    if (config.enabled.paths && targets) {
+      const blocked = blockedByRules(config, targets, ctx.cwd);
       if (blocked) return { block: true, reason: blocked };
+    }
+
+    const hit = targets ? outsideHit(config, targets, ctx.cwd) : undefined;
+    if (hit && !sessionGrants.has(`outside:${hit.path}`)) {
+      const reason = `outside workspace: ${hit.path}`;
+      if (hit.mode === "block") return { block: true, reason: `pi-permit: ${reason}` };
+      const outcome = await ask({
+        command: targets?.label ?? hit.path,
+        reason,
+        hasUI: ctx.hasUI,
+        grants: sessionGrants,
+        grantKey: `outside:${hit.path}`,
+        custom: typeof ctx.ui.custom === "function" ? (factory) => ctx.ui.custom(factory) : undefined,
+        select: (title, options) => ctx.ui.select(title, options),
+        abort: () => ctx.abort(),
+      });
+      if (outcome.block) return { block: true, reason: outcome.reason };
     }
 
     if (!config.enabled.commands) return;
@@ -73,7 +103,7 @@ export default async function permit(pi: ExtensionAPI) {
 
     const command = (event.input as Record<string, unknown>).command;
     if (typeof command !== "string" || command.trim() === "") return;
-    if (grants.has(command)) return;
+    if (sessionGrants.has(command)) return;
 
     const verdict = decide(command, config.commands);
     if (verdict.action === "allow") return;
@@ -91,7 +121,7 @@ export default async function permit(pi: ExtensionAPI) {
       command,
       reason,
       hasUI: ctx.hasUI,
-      grants,
+      grants: sessionGrants,
       custom: typeof ctx.ui.custom === "function" ? (factory) => ctx.ui.custom(factory) : undefined,
       select: (title, options) => ctx.ui.select(title, options),
       abort: () => ctx.abort(),
@@ -107,7 +137,7 @@ export default async function permit(pi: ExtensionAPI) {
         [
           `pi-permit: ${deny.length} deny / ${askRules.length} ask / ${allow.length} allow rules, ${config.paths.length} path rules`,
           `sources: ${config.sources.length > 0 ? config.sources.join(", ") : "defaults only"}`,
-          `session grants: ${grants.size}`,
+          `session grants: ${sessionGrants.size}`,
           ...(config.fatal ? [config.fatal] : []),
         ].join("\n"),
         config.fatal ? "error" : "info",

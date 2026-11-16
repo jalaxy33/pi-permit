@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { compileOutside } from "./outside";
 import { compilePathRules } from "./paths";
 import { compileRules } from "./match";
 import {
@@ -22,6 +23,16 @@ export function projectConfigPath(cwd: string): string {
 
 const SECTIONS: Section[] = ["deny", "ask", "allow"];
 
+/** Later scopes win field by field. */
+function pickOutside(scopes: ConfigFile[]) {
+  const merged: { mode?: "allow" | "ask" | "block"; allowPaths?: string[] } = {};
+  for (const scope of scopes) {
+    if (scope.outsideCwd?.mode) merged.mode = scope.outsideCwd.mode;
+    if (scope.outsideCwd?.allowPaths) merged.allowPaths = scope.outsideCwd.allowPaths;
+  }
+  return merged.mode || merged.allowPaths ? merged : undefined;
+}
+
 /** `paths` is an array, but `{ rules: [...] }` is accepted for older configs. */
 function pathRulesOf(config: ConfigFile): PathRule[] {
   const raw = config.paths as unknown;
@@ -43,6 +54,7 @@ export function loadConfig(cwd: string, trusted: boolean): ResolvedConfig {
       enabled: { commands: true, paths: false },
       commands: { deny: [], ask: [], allow: [] },
       paths: [],
+      outside: compileOutside(undefined),
       fatal: `pi-permit: cannot read ${builtinPath}`,
       warnings,
       sources,
@@ -107,6 +119,7 @@ export function loadConfig(cwd: string, trusted: boolean): ResolvedConfig {
       allow: compile(resolved.rules.allow),
     },
     paths: compiledPaths.rules,
+    outside: compileOutside(pickOutside(userScopes)),
     warnings,
     sources,
   };

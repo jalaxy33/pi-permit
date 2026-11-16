@@ -62,9 +62,19 @@ export interface RuleFile {
   paths?: PathRule[];
 }
 
+export interface OutsideCwdConfig {
+  /** What to do when a tool touches a path outside the working directory. */
+  mode?: "allow" | "ask" | "block";
+  /** Absolute, `~`, or cwd-relative globs that stay allowed. */
+  allowPaths?: string[];
+}
+
 export interface ConfigFile extends RuleFile {
   enabled?: { commands?: boolean; paths?: boolean };
+  outsideCwd?: OutsideCwdConfig;
 }
+
+import type { OutsideRule } from "./outside";
 
 export type PathOp = "read" | "write" | "delete";
 export type Protection = "block" | "read-only";
@@ -93,6 +103,7 @@ export interface ResolvedConfig {
   enabled: { commands: boolean; paths: boolean };
   commands: GateRules;
   paths: CompiledPathRule[];
+  outside: OutsideRule;
   /** Set when the shipped rules cannot be read: every gated tool is blocked. */
   fatal?: string;
   warnings: string[];

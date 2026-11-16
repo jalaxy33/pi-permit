@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cwdAfter, extractTargets, looksLikePath } from "../src/ops";
+import { collectTargets, cwdAfter, extractTargets, looksLikePath } from "../src/ops";
 import { tokenize } from "../src/tokenize";
 
 const root = mkdtempSync(join(tmpdir(), "pi-permit-ops-"));
@@ -12,6 +12,7 @@ mkdirSync(join(project, "build"), { recursive: true });
 writeFileSync(join(project, ".env"), "SECRET=1\n");
 writeFileSync(join(project, "src", "app.ts"), "export {};\n");
 writeFileSync(join(project, "notes"), "text\n");
+writeFileSync(join(project, "server.pem"), "key\n");
 
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
@@ -69,6 +70,35 @@ describe("extractTargets", () => {
 
   test("follows cd for later commands", () => {
     expect(targets("cd build && cat ../.env")).toEqual([{ path: "../.env", op: "read" }]);
+  });
+});
+
+describe("gap fixes", () => {
+  test("expands visible globs", () => {
+    expect(collectTargets("cat *.pem", project)).toEqual([{ path: "server.pem", op: "read" }]);
+  });
+
+  test("expands dotfile globs", () => {
+    expect(collectTargets("cat .env*", project)).toEqual([{ path: ".env", op: "read" }]);
+  });
+
+  test("recurses into sh -c", () => {
+    const found = collectTargets('sh -c "cat .env"', project);
+    expect(found.some((target) => target.path === ".env" && target.op === "read")).toBe(true);
+  });
+
+  test("recurses into bash -c deletes", () => {
+    const found = collectTargets(`bash -c "rm -f .env"`, project);
+    expect(found.some((target) => target.path === ".env" && target.op === "delete")).toBe(true);
+  });
+
+  test("keeps the basename of unresolved variables", () => {
+    const found = collectTargets("cat ${HOME}/x/.env", project);
+    expect(found).toEqual([{ path: ".env", op: "read", basenameOnly: true }]);
+  });
+
+  test("ignores variables without a file suffix", () => {
+    expect(collectTargets("cat ${UNSET}", project)).toEqual([]);
   });
 });
 

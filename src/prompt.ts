@@ -221,6 +221,8 @@ export interface PromptRequest {
   reason: string;
   hasUI: boolean;
   grants: SessionGrants;
+  /** Session grant key; defaults to the command string. */
+  grantKey?: string;
   custom?: CustomPrompt;
   select?: SelectPrompt;
   abort: () => void;
@@ -230,7 +232,7 @@ function resolveChoice(choice: Choice | undefined, request: PromptRequest): Outc
   const { command, reason } = request;
   if (choice === "allow") return { block: false };
   if (choice === "allow-session") {
-    request.grants.add(command);
+    request.grants.add(request.grantKey ?? command);
     return { block: false };
   }
   if (choice === "stop") {
