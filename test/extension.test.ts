@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import permit from "../index";
 
-function setup(options: { hasUI: boolean; answers?: string[] }) {
+function setup(options: { hasUI: boolean; keys?: string[] }) {
   const handlers: Function[] = [];
   const commands: string[] = [];
   const asked: string[] = [];
@@ -31,7 +31,16 @@ function setup(options: { hasUI: boolean; answers?: string[] }) {
       notify: () => {},
       select: async (title: string) => {
         asked.push(title);
-        return options.answers?.shift();
+        return undefined;
+      },
+      custom: async (factory: any) => {
+        asked.push("prompt");
+        const key = options.keys?.shift() ?? "\u001b";
+        return await new Promise((resolve) => {
+          const component = factory({}, {}, {}, resolve);
+          component.render(80);
+          component.handleInput(key);
+        });
       },
     },
   };
@@ -74,7 +83,7 @@ describe("extension", () => {
   });
 
   test("allow once executes without keeping a grant", async () => {
-    const env = setup({ hasUI: true, answers: ["Allow once", "Deny"] });
+    const env = setup({ hasUI: true, keys: ["y", "n"] });
     await permit(env.stub);
     expect(await env.call("rm -r build")).toBeUndefined();
     const second = await env.call("rm -r build");
@@ -83,7 +92,7 @@ describe("extension", () => {
   });
 
   test("session grant skips later prompts for the same command", async () => {
-    const env = setup({ hasUI: true, answers: ["Allow for this session"] });
+    const env = setup({ hasUI: true, keys: ["a"] });
     await permit(env.stub);
     expect(await env.call("rm -r build")).toBeUndefined();
     expect(await env.call("rm -r build")).toBeUndefined();
@@ -91,7 +100,7 @@ describe("extension", () => {
   });
 
   test("deny blocks without terminating", async () => {
-    const env = setup({ hasUI: true, answers: ["Deny"] });
+    const env = setup({ hasUI: true, keys: ["n"] });
     await permit(env.stub);
     const result = await env.call("npm publish");
     expect(result?.block).toBe(true);
@@ -100,7 +109,7 @@ describe("extension", () => {
   });
 
   test("deny and stop aborts the turn", async () => {
-    const env = setup({ hasUI: true, answers: ["Deny and stop"] });
+    const env = setup({ hasUI: true, keys: ["s"] });
     await permit(env.stub);
     const result = await env.call("npm publish");
     expect(result?.block).toBe(true);
@@ -108,7 +117,7 @@ describe("extension", () => {
   });
 
   test("deny rules block with terminate and without a prompt", async () => {
-    const env = setup({ hasUI: true, answers: [] });
+    const env = setup({ hasUI: true, keys: [] });
     await permit(env.stub);
     const result: any = await env.call("git filter-repo --path x");
     expect(result?.block).toBe(true);

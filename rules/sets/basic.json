@@ -1,0 +1,95 @@
+{
+  "description": "Rare commands whose damage cannot be undone. Low noise on purpose.",
+  "commands": {
+    "ask": [
+      {
+        "id": "rm-recursive",
+        "program": "rm",
+        "anyFlag": [
+          "-r",
+          "-R",
+          "--recursive"
+        ],
+        "reason": "recursive delete"
+      },
+      {
+        "id": "sudo",
+        "program": [
+          "sudo",
+          "doas",
+          "pkexec"
+        ],
+        "reason": "privilege escalation"
+      },
+      {
+        "id": "dd-write",
+        "program": "dd",
+        "argvRegex": "(^|\\s)of=",
+        "reason": "raw device write"
+      },
+      {
+        "id": "mkfs",
+        "program": [
+          "mkfs",
+          "mkfs.*"
+        ],
+        "reason": "filesystem format"
+      },
+      {
+        "id": "wipefs",
+        "program": "wipefs",
+        "reason": "filesystem signature wipe"
+      },
+      {
+        "id": "blkdiscard",
+        "program": "blkdiscard",
+        "reason": "block device discard"
+      },
+      {
+        "id": "disk-partition",
+        "program": [
+          "fdisk",
+          "cfdisk",
+          "sfdisk",
+          "parted",
+          "sgdisk"
+        ],
+        "reason": "disk partitioning"
+      },
+      {
+        "id": "shred",
+        "program": "shred",
+        "reason": "secure file overwrite"
+      },
+      {
+        "id": "chmod-recursive-world",
+        "program": "chmod",
+        "anyFlag": [
+          "-R",
+          "--recursive"
+        ],
+        "argvRegex": "(^|\\s)(777|0777|1777|7777|a\\+rwx|ugo\\+rwx)(\\s|$)",
+        "reason": "insecure recursive permissions"
+      },
+      {
+        "id": "chown-recursive",
+        "program": "chown",
+        "anyFlag": [
+          "-R",
+          "--recursive"
+        ],
+        "reason": "recursive ownership change"
+      },
+      {
+        "id": "docker-privileged",
+        "program": "docker",
+        "args": [
+          "run",
+          "create"
+        ],
+        "argvRegex": "--privileged|--pid=host|--network=host|--userns=host|--ipc=host|--uts=host|/var/run/docker.sock|/run/docker.sock",
+        "reason": "container escapes the sandbox"
+      }
+    ]
+  }
+}

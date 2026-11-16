@@ -1,0 +1,10 @@
+{
+  "commands": {
+    "ask": [
+      { "id": "git-status", "program": "git", "args": ["status"], "reason": "custom: status prompts" }
+    ],
+    "deny": [
+      { "id": "my-wipe", "program": "mywipe", "reason": "custom deny" }
+    ]
+  }
+}

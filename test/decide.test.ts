@@ -1,44 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { loadConfig } from "../config";
-import { decide } from "../decide";
-import { tokenize } from "../tokenize";
+import { loadConfig } from "../src/config";
+import { decide } from "../src/decide";
 
 const config = loadConfig("/nonexistent-cwd", false);
 
 function action(command: string): string {
   return decide(command, config.commands).action;
 }
-
-describe("tokenize", () => {
-  test("splits on separators", () => {
-    const commands = tokenize("git add -A && git commit -m x; ls | wc -l");
-    expect(commands.map((c) => c.argv[0])).toEqual(["git", "git", "ls", "wc"]);
-  });
-
-  test("keeps quoted words whole", () => {
-    expect(tokenize(`echo 'a b' "c d"`)[0]?.argv).toEqual(["echo", "a b", "c d"]);
-  });
-
-  test("records redirects outside argv", () => {
-    const [first] = tokenize("printf x > /tmp/f");
-    expect(first?.argv).toEqual(["printf", "x"]);
-    expect(first?.redirects).toEqual([{ op: ">", target: "/tmp/f" }]);
-  });
-
-  test("skips heredoc bodies", () => {
-    const commands = tokenize("cat > /tmp/x.sh <<'EOF'\ngit reset --hard\nEOF\necho done");
-    expect(commands.map((c) => c.argv.join(" "))).toEqual(["cat", "echo done"]);
-  });
-
-  test("tokenizes command substitution", () => {
-    const commands = tokenize("echo $(git clean -fdx)");
-    expect(commands.map((c) => c.argv.join(" "))).toEqual(["echo", "git clean -fdx"]);
-  });
-
-  test("drops comments", () => {
-    expect(tokenize("ls # git push").map((c) => c.argv.join(" "))).toEqual(["ls"]);
-  });
-});
 
 describe("decide", () => {
   test("denies history rewriting", () => {
@@ -93,6 +61,24 @@ describe("decide", () => {
     }
   });
 
+  test("asks before disk and container escalation", () => {
+    for (const command of [
+      "dd if=/dev/zero of=/dev/sda",
+      "mkfs.ext4 /dev/sdb1",
+      "wipefs -a /dev/sdb",
+      "blkdiscard /dev/nvme0n1",
+      "fdisk /dev/sda",
+      "parted /dev/sdb mklabel gpt",
+      "shred -u secrets.txt",
+      "chmod -R 777 /var/www",
+      "chown -R nobody /srv",
+      "docker run --privileged img",
+      "docker run --pid=host img",
+    ]) {
+      expect([command, action(command)]).toEqual([command, "ask"]);
+    }
+  });
+
   test("allows harmless variants", () => {
     for (const command of [
       "git status",
@@ -109,6 +95,11 @@ describe("decide", () => {
       "rsync -av a/ b/",
       "kubectl get pods",
       "docker compose down",
+      "chmod 755 script.sh",
+      "chmod -R 755 www",
+      "chown alice file.txt",
+      "mkfs-tool --version",
+      "docker run img",
       "SELECT * FROM users",
     ]) {
       expect([command, action(command)]).toEqual([command, "allow"]);
@@ -130,14 +121,5 @@ describe("decide", () => {
     const verdict = decide("git filter-branch --all", config.commands);
     expect(verdict.reasons.length).toBeGreaterThan(0);
     expect(verdict.terminate).toBe(true);
-  });
-});
-
-describe("config", () => {
-  test("compiles defaults without warnings", () => {
-    expect(config.warnings).toEqual([]);
-    expect(config.commands.deny.length).toBeGreaterThan(0);
-    expect(config.enabled.commands).toBe(true);
-    expect(config.enabled.paths).toBe(false);
   });
 });

@@ -1,0 +1,38 @@
+{
+  "description": "Never reaches the agent. Removing this set disables the hard deny rules.",
+  "commands": {
+    "deny": [
+      {
+        "id": "git-history",
+        "program": "git",
+        "args": [
+          "filter-branch",
+          "filter-repo",
+          "update-ref"
+        ],
+        "reason": "rewrites history or deletes refs",
+        "terminate": true
+      },
+      {
+        "id": "git-reflog",
+        "program": "git",
+        "args": [
+          "reflog"
+        ],
+        "argvRegex": "(^|\\s)(expire|delete)(\\s|$)",
+        "reason": "removes the recovery log",
+        "terminate": true
+      },
+      {
+        "id": "git-gc-prune",
+        "program": "git",
+        "args": [
+          "gc"
+        ],
+        "argvRegex": "--prune=(now|0|all|never)",
+        "reason": "drops unreachable objects for good",
+        "terminate": true
+      }
+    ]
+  }
+}

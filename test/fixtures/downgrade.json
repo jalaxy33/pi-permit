@@ -1,0 +1,7 @@
+{
+  "commands": {
+    "ask": [
+      { "id": "git-history", "program": "git", "args": ["filter-branch"], "reason": "downgraded on purpose" }
+    ]
+  }
+}
