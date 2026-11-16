@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import permit from "../index";
 
 function setup(options: { hasUI: boolean; keys?: string[] }) {
@@ -45,18 +48,17 @@ function setup(options: { hasUI: boolean; keys?: string[] }) {
     },
   };
 
-  const call = async (command: string) => {
+  const callTool = async (toolName: string, input: Record<string, unknown>) => {
     for (const handler of handlers) {
-      const result: any = await handler(
-        { type: "tool_call", toolName: "bash", input: { command } },
-        ctx,
-      );
+      const result: any = await handler({ type: "tool_call", toolName, input }, ctx);
       if (result?.block) return result;
     }
     return undefined;
   };
 
-  return { stub, call, commands, asked, aborted: () => aborted };
+  const call = (command: string) => callTool("bash", { command });
+
+  return { stub, call, callTool, commands, asked, aborted: () => aborted };
 }
 
 describe("extension", () => {
@@ -123,5 +125,47 @@ describe("extension", () => {
     expect(result?.block).toBe(true);
     expect(result?.terminate).toBe(true);
     expect(env.asked).toEqual([]);
+  });
+});
+
+describe("path rules", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pi-permit-ext-"));
+  writeFileSync(join(dir, ".env"), "SECRET=1\n");
+  writeFileSync(join(dir, ".env.example"), "SECRET=\n");
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  test("blocks reading .env through the read tool", async () => {
+    const env = setup({ hasUI: true, keys: [] });
+    await permit(env.stub);
+    const result = await env.callTool("read", { path: join(dir, ".env") });
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toContain(".env");
+  });
+
+  test("blocks writing .env through the edit tool", async () => {
+    const env = setup({ hasUI: true, keys: [] });
+    await permit(env.stub);
+    const result = await env.callTool("edit", { path: join(dir, ".env"), edits: [] });
+    expect(result?.block).toBe(true);
+  });
+
+  test("allows .env.example", async () => {
+    const env = setup({ hasUI: true, keys: [] });
+    await permit(env.stub);
+    expect(await env.callTool("read", { path: join(dir, ".env.example") })).toBeUndefined();
+  });
+
+  test("blocks bash redirection into .env", async () => {
+    const env = setup({ hasUI: true, keys: [] });
+    await permit(env.stub);
+    const result = await env.call("echo x > .env");
+    expect(result?.block).toBe(true);
+    expect(result?.reason).toContain(".env");
+  });
+
+  test("leaves unrelated paths alone", async () => {
+    const env = setup({ hasUI: true, keys: [] });
+    await permit(env.stub);
+    expect(await env.callTool("read", { path: join(dir, "notes.txt") })).toBeUndefined();
   });
 });

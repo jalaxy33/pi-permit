@@ -91,5 +91,49 @@
         "reason": "container escapes the sandbox"
       }
     ]
-  }
+  },
+  "paths": [
+    {
+      "id": "secrets-env",
+      "patterns": [
+        ".env",
+        ".env.*"
+      ],
+      "except": [
+        ".env.example",
+        ".env.sample",
+        ".env.test",
+        "*.example.env"
+      ],
+      "protection": "block",
+      "ops": [
+        "read",
+        "write",
+        "delete"
+      ],
+      "message": "pi-permit: .env files hold secrets; ask the user to read or change them"
+    },
+    {
+      "id": "private-keys",
+      "patterns": [
+        "*.pem",
+        "*.key",
+        "id_rsa",
+        "id_ed25519",
+        "id_ecdsa"
+      ],
+      "except": [
+        "*.pub",
+        "*.crt",
+        "*.csr"
+      ],
+      "protection": "block",
+      "ops": [
+        "read",
+        "write",
+        "delete"
+      ],
+      "message": "pi-permit: private key material is off limits"
+    }
+  ]
 }

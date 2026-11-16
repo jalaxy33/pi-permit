@@ -1,9 +1,48 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig, type ResolvedConfig } from "./src/config";
 import { decide } from "./src/decide";
+import { checkPath } from "./src/paths";
 import { ask, SessionGrants } from "./src/prompt";
+import { tokenize } from "./src/tokenize";
+import type { PathOp } from "./src/types";
 
 const GATED_TOOLS = new Set(["bash", "powershell"]);
+const FILE_TOOL_OPS: Record<string, PathOp> = {
+  read: "read",
+  grep: "read",
+  find: "read",
+  ls: "read",
+  write: "write",
+  edit: "write",
+};
+
+/** Path rules for file tools and for bash redirections (`> file`, `< file`). */
+function checkToolPaths(
+  config: ResolvedConfig,
+  toolName: string,
+  input: Record<string, unknown>,
+  cwd: string,
+): string | undefined {
+  const fileOp = FILE_TOOL_OPS[toolName];
+  if (fileOp) {
+    const raw = String(input.path ?? input.file_path ?? "").trim();
+    if (!raw) return undefined;
+    return checkPath(config.paths, raw, cwd, fileOp)?.reason;
+  }
+
+  if (!GATED_TOOLS.has(toolName)) return undefined;
+  const command = input.command;
+  if (typeof command !== "string" || command.trim() === "") return undefined;
+
+  for (const simple of tokenize(command)) {
+    for (const redirect of simple.redirects) {
+      const op: PathOp = redirect.op === "<" ? "read" : "write";
+      const blocked = checkPath(config.paths, redirect.target, cwd, op);
+      if (blocked) return blocked.reason;
+    }
+  }
+  return undefined;
+}
 
 export default async function permit(pi: ExtensionAPI) {
   let config: ResolvedConfig = loadConfig(process.cwd(), false);
@@ -20,9 +59,15 @@ export default async function permit(pi: ExtensionAPI) {
   });
 
   pi.on("tool_call", async (event, ctx) => {
+    if (config.fatal) return { block: true, reason: config.fatal };
+
+    if (config.enabled.paths) {
+      const blocked = checkToolPaths(config, event.toolName, event.input as Record<string, unknown>, ctx.cwd);
+      if (blocked) return { block: true, reason: blocked };
+    }
+
     if (!config.enabled.commands) return;
     if (!GATED_TOOLS.has(event.toolName)) return;
-    if (config.fatal) return { block: true, reason: config.fatal };
 
     const command = (event.input as Record<string, unknown>).command;
     if (typeof command !== "string" || command.trim() === "") return;
@@ -58,7 +103,7 @@ export default async function permit(pi: ExtensionAPI) {
       const { deny, ask: askRules, allow } = config.commands;
       ctx.ui.notify(
         [
-          `pi-permit: ${deny.length} deny / ${askRules.length} ask / ${allow.length} allow rules`,
+          `pi-permit: ${deny.length} deny / ${askRules.length} ask / ${allow.length} allow rules, ${config.paths.length} path rules`,
           `sources: ${config.sources.length > 0 ? config.sources.join(", ") : "defaults only"}`,
           `session grants: ${grants.size}`,
           ...(config.fatal ? [config.fatal] : []),

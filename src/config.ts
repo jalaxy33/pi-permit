@@ -1,14 +1,16 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { compilePathRules } from "./paths";
 import { compileRules } from "./match";
 import {
-  builtinRulesPath,
+  defaultConfigPath,
   collectContributions,
-  type Contribution,
+  type CollectedRules,
   readJson,
   resolveContributions,
+  resolvePathContributions,
 } from "./rules";
-import type { ConfigFile, ResolvedConfig, Section } from "./types";
+import type { ConfigFile, PathRule, ResolvedConfig, Section } from "./types";
 
 export function globalConfigPath(): string {
   return join(homedir(), ".pi", "agent", "permit.json");
@@ -20,16 +22,27 @@ export function projectConfigPath(cwd: string): string {
 
 const SECTIONS: Section[] = ["deny", "ask", "allow"];
 
+/** `paths` is an array, but `{ rules: [...] }` is accepted for older configs. */
+function pathRulesOf(config: ConfigFile): PathRule[] {
+  const raw = config.paths as unknown;
+  if (Array.isArray(raw)) return raw as PathRule[];
+  if (raw && typeof raw === "object" && Array.isArray((raw as { rules?: unknown }).rules)) {
+    return (raw as { rules: PathRule[] }).rules;
+  }
+  return [];
+}
+
 export function loadConfig(cwd: string, trusted: boolean): ResolvedConfig {
   const warnings: string[] = [];
   const sources: string[] = [];
 
-  const builtinPath = builtinRulesPath();
+  const builtinPath = defaultConfigPath();
   const builtin = readJson(builtinPath, warnings);
   if (!builtin) {
     return {
       enabled: { commands: true, paths: false },
       commands: { deny: [], ask: [], allow: [] },
+      paths: [],
       fatal: `pi-permit: cannot read ${builtinPath}`,
       warnings,
       sources,
@@ -37,12 +50,7 @@ export function loadConfig(cwd: string, trusted: boolean): ResolvedConfig {
   }
   sources.push(builtinPath);
 
-  const contributions: Contribution[] = collectContributions(
-    builtin.defaultRules ?? [],
-    builtin,
-    builtinPath,
-    warnings,
-  );
+  const collected: CollectedRules = collectContributions(builtin.defaultRules ?? [], builtin, builtinPath, warnings);
 
   const scopes: Array<{ path: string; config: ConfigFile | undefined }> = [
     { path: globalConfigPath(), config: readJson(globalConfigPath(), warnings) },
@@ -56,19 +64,26 @@ export function loadConfig(cwd: string, trusted: boolean): ResolvedConfig {
     if (!scope.config) continue;
     userScopes.push(scope.config);
     sources.push(scope.path);
-    contributions.push(
-      ...collectContributions(scope.config.defaultRules ?? [], scope.config, scope.path, warnings),
-    );
+    const scopeCollected = collectContributions(scope.config.defaultRules ?? [], scope.config, scope.path, warnings);
+    collected.commands.push(...scopeCollected.commands);
+    collected.paths.push(...scopeCollected.paths);
     for (const section of SECTIONS) {
       for (const rule of scope.config.commands?.[section] ?? []) {
-        contributions.push({ set: scope.path, section, rule, source: scope.path });
+        collected.commands.push({ set: scope.path, section, rule, source: scope.path });
       }
+    }
+    for (const rule of pathRulesOf(scope.config)) {
+      collected.paths.push({ set: scope.path, rule, source: scope.path });
     }
   }
 
-  const resolved = resolveContributions(contributions);
+  const resolvedPaths = resolvePathContributions(collected.paths);
+  const compiledPaths = compilePathRules(resolvedPaths.rules);
+  warnings.push(...resolvedPaths.warnings, ...compiledPaths.warnings);
+
+  const resolved = resolveContributions(collected.commands);
   warnings.push(...resolved.warnings);
-  for (const source of resolved.sources) {
+  for (const source of [...resolved.sources, ...resolvedPaths.sources]) {
     if (!sources.includes(source)) sources.push(source);
   }
 
@@ -84,13 +99,14 @@ export function loadConfig(cwd: string, trusted: boolean): ResolvedConfig {
   return {
     enabled: {
       commands: pick("commands") ?? true,
-      paths: pick("paths") ?? false,
+      paths: pick("paths") ?? true,
     },
     commands: {
       deny: compile(resolved.rules.deny),
       ask: compile(resolved.rules.ask),
       allow: compile(resolved.rules.allow),
     },
+    paths: compiledPaths.rules,
     warnings,
     sources,
   };

@@ -1,0 +1,1 @@
+{ "paths": [ { "id": "secrets-env", "patterns": [".env"], "protection": "read-only" } ] }

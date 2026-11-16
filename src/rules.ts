@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CommandsSection, Rule, RuleFile, Section } from "./types";
+import type { CommandsSection, PathRule, Rule, RuleFile, Section } from "./types";
 
 export interface Contribution {
   /** Logical name from `defaultRules` (set name or the path entry itself). */
@@ -21,10 +21,21 @@ export interface ResolvedRules {
   allow: Rule[];
 }
 
+export interface PathContribution {
+  set: string;
+  rule: PathRule;
+  source?: string;
+}
+
+export interface CollectedRules {
+  commands: Contribution[];
+  paths: PathContribution[];
+}
+
 const SECTIONS: Section[] = ["deny", "ask", "allow"];
 
-export function builtinRulesPath(): string {
-  return fileURLToPath(new URL("../rules/builtin.json", import.meta.url));
+export function defaultConfigPath(): string {
+  return fileURLToPath(new URL("../configs/default.json", import.meta.url));
 }
 
 export function expandHome(path: string): string {
@@ -53,29 +64,36 @@ export function readJson(path: string, warnings: string[]): RuleFile | undefined
   }
 }
 
-function fromFile(entry: string, baseDir: string, warnings: string[]): { commands: CommandsSection; path: string } | undefined {
+function fromFile(
+  entry: string,
+  baseDir: string,
+  warnings: string[],
+): { commands?: CommandsSection; paths?: PathRule[]; path: string } | undefined {
   const path = resolveRulePath(entry, baseDir);
   const file = readJson(path, warnings);
   if (!file) {
     warnings.push(`rule file not found or invalid: ${path}`);
     return undefined;
   }
-  if (!file.commands) {
-    warnings.push(`${path}: expected a "commands" section, nothing loaded`);
+  if (!file.commands && !file.paths) {
+    warnings.push(`${path}: expected "commands" or "paths", nothing loaded`);
     return undefined;
   }
-  return { commands: file.commands, path };
+  return { commands: file.commands, paths: file.paths, path };
 }
 
 function push(
-  contributions: Contribution[],
+  collected: CollectedRules,
   set: string,
-  commands: CommandsSection,
+  rules: { commands?: CommandsSection; paths?: PathRule[] },
   source: string | undefined,
 ): void {
   for (const section of SECTIONS) {
-    for (const rule of commands[section] ?? []) contributions.push({ set, section, rule, source });
+    for (const rule of rules.commands?.[section] ?? []) {
+      collected.commands.push({ set, section, rule, source });
+    }
   }
+  for (const rule of rules.paths ?? []) collected.paths.push({ set, rule, source });
 }
 
 /**
@@ -88,12 +106,15 @@ export function collectContributions(
   manifest: RuleFile,
   manifestPath: string,
   warnings: string[],
-): Contribution[] {
+): CollectedRules {
   const baseDir = dirname(manifestPath);
-  const contributions: Contribution[] = [];
+  const collected: CollectedRules = { commands: [], paths: [] };
   const drop = (set: string) => {
-    for (let i = contributions.length - 1; i >= 0; i--) {
-      if (contributions[i]?.set === set) contributions.splice(i, 1);
+    for (let i = collected.commands.length - 1; i >= 0; i--) {
+      if (collected.commands[i]?.set === set) collected.commands.splice(i, 1);
+    }
+    for (let i = collected.paths.length - 1; i >= 0; i--) {
+      if (collected.paths[i]?.set === set) collected.paths.splice(i, 1);
     }
   };
 
@@ -111,7 +132,7 @@ export function collectContributions(
         continue;
       }
       const loaded = fromFile(name, baseDir, warnings);
-      if (loaded) push(contributions, name, loaded.commands, loaded.path);
+      if (loaded) push(collected, name, loaded, loaded.path);
       continue;
     }
 
@@ -127,13 +148,36 @@ export function collectContributions(
     drop(name);
     if (typeof ref === "string") {
       const loaded = fromFile(ref, baseDir, warnings);
-      if (loaded) push(contributions, name, loaded.commands, loaded.path);
+      if (loaded) push(collected, name, loaded, loaded.path);
       continue;
     }
-    push(contributions, name, ref, manifestPath);
+    push(collected, name, ref, manifestPath);
   }
 
-  return contributions;
+  return collected;
+}
+
+/** Path rules: later ones win by id, same as commands. */
+export function resolvePathContributions(contributions: PathContribution[]): {
+  rules: PathRule[];
+  warnings: string[];
+  sources: string[];
+} {
+  const warnings: string[] = [];
+  const sources: string[] = [];
+  const byId = new Map<string, PathRule>();
+
+  for (const contribution of contributions) {
+    if (contribution.source && !sources.includes(contribution.source)) sources.push(contribution.source);
+    const id = contribution.rule?.id;
+    if (!id) {
+      warnings.push(`ignore path rule without id from ${contribution.set}`);
+      continue;
+    }
+    byId.set(id, contribution.rule);
+  }
+
+  return { rules: [...byId.values()], warnings, sources };
 }
 
 /** Later contributions win by rule id, across sections. */

@@ -48,8 +48,10 @@ export interface CommandsSection {
   allow?: Rule[];
 }
 
-/** A set is either inline rules or a path to a rule file (same shape as user files). */
-export type RuleSetRef = string | (CommandsSection & { description?: string });
+/** A set is either a path to a rule file or inline rules. */
+export type RuleSetRef =
+  | string
+  | (CommandsSection & { description?: string; paths?: PathRule[] });
 
 export interface RuleFile {
   version?: number;
@@ -57,11 +59,11 @@ export interface RuleFile {
   defaultRules?: string[];
   sets?: Record<string, RuleSetRef>;
   commands?: CommandsSection;
+  paths?: PathRule[];
 }
 
 export interface ConfigFile extends RuleFile {
   enabled?: { commands?: boolean; paths?: boolean };
-  paths?: { rules?: unknown[] };
 }
 
 export type PathOp = "read" | "write" | "delete";

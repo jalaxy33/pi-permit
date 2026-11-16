@@ -1,26 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { builtinRulesPath, collectContributions, readJson, resolveContributions, resolveRulePath } from "../src/rules";
+import { defaultConfigPath, collectContributions, readJson, resolveContributions, resolvePathContributions, resolveRulePath } from "../src/rules";
 import type { RuleFile } from "../src/types";
 
-const builtinPath = builtinRulesPath();
+const builtinPath = defaultConfigPath();
 const builtin = readJson(builtinPath, [])!;
 const rulesDir = dirname(builtinPath);
 const fixtureDir = fileURLToPath(new URL("./fixtures/", import.meta.url));
 
 function resolve(entries: string[], manifest: RuleFile = builtin, manifestPath = builtinPath) {
   const warnings: string[] = [];
-  const contributions = collectContributions(entries, manifest, manifestPath, warnings);
-  const resolved = resolveContributions(contributions);
+  const collected = collectContributions(entries, manifest, manifestPath, warnings);
+  const resolved = resolveContributions(collected.commands);
+  const paths = resolvePathContributions(collected.paths);
   return {
     ...resolved.rules,
+    pathIds: paths.rules.map((rule) => rule.id),
     ids: {
       deny: resolved.rules.deny.map((rule) => rule.id),
       ask: resolved.rules.ask.map((rule) => rule.id),
       allow: resolved.rules.allow.map((rule) => rule.id),
     },
-    sources: resolved.sources,
+    sources: [...new Set([...resolved.sources, ...paths.sources])],
     warnings: [...warnings, ...resolved.warnings],
   };
 }
@@ -31,13 +33,13 @@ describe("builtin manifest", () => {
     expect(Object.keys(builtin.sets ?? {})).toEqual(["deny", "basic", "strict"]);
   });
 
-  test("set entries point at rule files under sets/", () => {
+  test("set entries point at rule files under rulesets/", () => {
     const rules = resolve(["deny", "basic", "strict"]);
     expect(rules.warnings).toEqual([]);
     expect(rules.sources).toEqual([
-      join(rulesDir, "sets", "deny.json"),
-      join(rulesDir, "sets", "basic.json"),
-      join(rulesDir, "sets", "strict.json"),
+      join(rulesDir, "rulesets", "deny.json"),
+      join(rulesDir, "rulesets", "basic.json"),
+      join(rulesDir, "rulesets", "strict.json"),
     ]);
   });
 
@@ -116,5 +118,23 @@ describe("rule files", () => {
   test("resolves absolute and home paths", () => {
     expect(resolveRulePath("/tmp/x.json", rulesDir)).toBe("/tmp/x.json");
     expect(resolveRulePath("~/x.json", rulesDir).startsWith("/")).toBe(true);
+  });
+});
+
+describe("path rules in sets", () => {
+  test("shipped sets carry path rules", () => {
+    const rules = resolve(["deny", "basic", "strict"]);
+    expect(rules.pathIds).toEqual(["secrets-env", "private-keys"]);
+  });
+
+  test("removing the set removes its path rules", () => {
+    const rules = resolve(["deny", "basic", "strict", "-basic"]);
+    expect(rules.pathIds).toEqual([]);
+  });
+
+  test("a later rule file overrides a shipped path rule by id", () => {
+    const manifest: RuleFile = { paths: [{ id: "secrets-env", patterns: [".env"], protection: "read-only" }] };
+    const rules = resolve(["./.extra-paths.json"], manifest, join(fixtureDir, "manifest.json"));
+    expect(rules.pathIds).toEqual(["secrets-env"]);
   });
 });
