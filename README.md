@@ -11,14 +11,10 @@ It looks at three things, in this order:
 ## Install
 
 ```bash
-pi install git:github.com/jalaxy33/pi-permit
+pi install npm:@jalaxy33/pi-permit
 ```
 
-Pi clones the repository into its package directory and adds it to `~/.pi/agent/settings.json`. Pin a ref with `@<tag-or-commit>`. For a local checkout instead, point at the directory:
-
-```bash
-pi install ~/.pi/agent/local-packages/pi-permit
-```
+Or from the repository: `pi install git:github.com/jalaxy33/pi-permit` (pin a ref with `@<tag-or-commit>`). For a local checkout: `pi install ./pi-permit`.
 
 Then run `/reload`. To check what was loaded, run `/permit`: it lists the rule counts and the files they came from. `/permit:reload` re-reads the config without restarting pi.
 
@@ -102,3 +98,7 @@ pi has no built-in permission system. Related packages, in the spirit of pi's [p
 - [pi-sandbox](https://pi.dev/packages/pi-sandbox) — OS-level sandboxing for bash, with allow and deny lists.
 
 Run one gate at a time: pi stops at the first `tool_call` handler that blocks, so overlapping gates shadow each other.
+
+## License
+
+MIT

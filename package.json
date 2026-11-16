@@ -1,17 +1,49 @@
 {
-  "name": "pi-permit",
+  "name": "@jalaxy33/pi-permit",
   "version": "0.1.0",
-  "private": true,
+  "description": "Permission gate for pi: command, path and workspace rules",
+  "license": "MIT",
   "type": "module",
-  "description": "Command permission gate for pi",
   "exports": {
     ".": "./index.ts",
     "./schema.json": "./schema.json"
+  },
+  "files": [
+    "index.ts",
+    "src",
+    "policy",
+    "schema.json",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "permission",
+    "permissions",
+    "security",
+    "guardrails"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jalaxy33/pi-permit.git"
+  },
+  "homepage": "https://github.com/jalaxy33/pi-permit",
+  "bugs": {
+    "url": "https://github.com/jalaxy33/pi-permit/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "pi": {
     "extensions": [
       "./index.ts"
     ]
+  },
+  "scripts": {
+    "test": "bun test",
+    "prepublishOnly": "bun test"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
