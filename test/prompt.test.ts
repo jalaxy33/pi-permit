@@ -172,7 +172,7 @@ describe("key handling", () => {
     expect(env.result.value).toBe("allow");
   });
 
-  test("newline from a paste also allows once", async () => {
+  test("a newline from a paste also allows once", async () => {
     const env = feed(["\n"]);
     await env.done;
     expect(env.result.value).toBe("allow");

@@ -19,7 +19,7 @@ const KEYS: Record<string, Choice> = {
 };
 
 const TOGGLE_KEYS = new Set(["o", "O", "\u000f"]);
-/** Enter maps to allow once; change to "deny" for a fail-closed default. */
+/** Enter accepts, matching the usual convention for confirmation prompts. */
 const ENTER_CHOICE: Choice = "allow";
 const ENTER_KEYS = new Set(["\r", "\n"]);
 const VIEWPORT_ROWS = 12;
