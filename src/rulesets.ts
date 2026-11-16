@@ -1,9 +1,9 @@
 /** Rule files: shipped defaults, user sets, and set resolution order. */
 
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { expandTilde } from "./paths";
 import type { CommandsSection, PathRule, Rule, RuleFile, Section } from "./types";
 
 export interface Contribution {
@@ -38,14 +38,8 @@ export function defaultConfigPath(): string {
   return fileURLToPath(new URL("../policy/manifest.json", import.meta.url));
 }
 
-export function expandHome(path: string): string {
-  if (path === "~") return homedir();
-  if (path.startsWith("~/")) return resolve(homedir(), path.slice(2));
-  return path;
-}
-
 export function resolveRulePath(entry: string, baseDir: string): string {
-  const expanded = expandHome(entry);
+  const expanded = expandTilde(entry);
   return isAbsolute(expanded) ? expanded : resolve(baseDir, expanded);
 }
 

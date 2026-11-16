@@ -10,7 +10,7 @@ import {
   readJson,
   resolveContributions,
   resolvePathContributions,
-} from "./rules";
+} from "./rulesets";
 import type { ConfigFile, PathRule, ResolvedConfig, Section } from "./types";
 
 export function globalConfigPath(): string {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultConfigPath, collectContributions, readJson, resolveContributions, resolvePathContributions, resolveRulePath } from "../src/rules";
+import { defaultConfigPath, collectContributions, readJson, resolveContributions, resolvePathContributions, resolveRulePath } from "../src/rulesets";
 import type { RuleFile } from "../src/types";
 
 const builtinPath = defaultConfigPath();
