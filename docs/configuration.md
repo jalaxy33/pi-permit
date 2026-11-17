@@ -1,6 +1,6 @@
 # Configuration reference
 
-Everything pi-permit reads lives in JSON. Nothing here is written back by the plugin.
+All config is JSON.
 
 ## Files and precedence
 
@@ -9,11 +9,9 @@ Everything pi-permit reads lives in JSON. Nothing here is written back by the pl
 | `~/.pi/agent/permit.json` | all projects |
 | `<project>/.pi/permit.json` | one project, only after the project is trusted |
 
-Those are the only files you edit. The rule sets shipped inside the package (`policy/` next to `index.ts`) are the starting point; treat them as read-only and override them by `id` or switch them off with `-name` in `defaultRules`.
+Shipped sets apply first, then global, then project. Within one file, a later rule with the same `id` replaces an earlier one. The shipped `policy/` files are read-only: override a rule by `id`, or switch a set off in `defaultRules`.
 
-Priority, lowest to highest: shipped sets, global, project. Within one file, a later rule with the same `id` replaces an earlier one; across files the higher scope wins.
-
-Config is read at extension load and on `session_start`. Use `/permit:reload` after editing.
+Config is re-read on session start; `/permit:reload` reloads it without restarting pi.
 
 ## `enabled`
 
@@ -38,8 +36,7 @@ Which rule sets are active, and in what order.
 | `"./file.json"`, `"/abs/file.json"`, `"~/file.json"` | load a rule file; relative paths resolve from the file that lists them |
 
 - Order matters: later entries replace earlier rules with the same `id`, across `deny`, `ask` and `allow`.
-- Disabling a set and enabling it again moves it to the end.
-- The shipped default is `["deny", "basic", "strict"]`, declared in `policy/manifest.json`.
+- The shipped default is `["deny", "basic", "strict"]`.
 - A user file's `defaultRules` is appended to the shipped list, so `["-strict"]` alone is enough to drop a set.
 
 ## `sets`
@@ -84,11 +81,10 @@ A rule file has the same shape as `permit.json` minus `enabled` and `outsideCwd`
 Matching notes:
 
 - `-rf` is expanded to `-r` and `-f`; `--hard` is also available as `hard`.
-- `--` ends flag parsing; later tokens are positional.
-- Leading `VAR=value` assignments are skipped when finding the program.
-- Options that take a value (`git -C dir`, `git -c k=v`) stay positional, so `args` still sees the subcommand.
-- One command string can contain several simple commands (`&&`, `;`, `|`, substitutions); each is matched, and the strictest verdict wins.
+- An option that takes a value stays positional, so `args` still sees the subcommand (`git -C dir push`).
+- One string can hold several commands (`&&`, `;`, `|`, substitutions); the strictest verdict wins.
 - Precedence inside one simple command: `deny` → `allow` → `ask` → allow by default.
+- "Allow for this session" remembers the rule and the flags: after allowing `rm -r build`, `rm -r dist` runs without asking, while `rm -rf dist` asks again. A deny rule still blocks a granted command.
 
 ## Path rules
 
@@ -132,15 +128,7 @@ Matching:
 - If the path exists, its real path is matched as well, so symlinks do not bypass a rule.
 - `*` does not cross `/`; `**` does.
 
-Where bash paths come from:
-
-- redirections (`> file`, `>> file`, `< file`);
-- arguments of known programs: reads (`cat`, `head`, `grep`, `less`, `awk`, …), writes (`tee`, `truncate`, `chmod`, …), deletes (`rm`, `unlink`, `shred`), source/destination pairs (`cp`, `mv`, `rsync`), `sed -i`;
-- unknown programs: path-looking arguments are treated as reads;
-- nested `sh -c "…"` (up to three levels);
-- each `cd` updates the directory used for later commands in the same string.
-
-Glob arguments are expanded before matching, so `cat .env*` is caught. `$VAR` operands cannot be resolved; the literal basename is matched instead.
+For bash commands the gate reads redirections, path arguments of known programs, path-looking arguments of unknown ones, `sed -i`, and nested `sh -c` (three levels); `cd` inside the string changes the directory for later commands. Globs are expanded before matching, so `cat .env*` is caught for files that exist; `$VAR` operands match by basename only.
 
 ## `outsideCwd`
 
@@ -150,31 +138,29 @@ Glob arguments are expanded before matching, so `cat .env*` is caught. `$VAR` op
 
 | Field | Meaning |
 |---|---|
-| `mode` | `ask` (default), `block`, `allow` |
+| `mode` | what writes and deletes outside the workspace do: `ask` (default), `block`, `allow` |
 | `allowPaths` | extra globs allowed outside the workspace; relative patterns compare against the project |
 
 Built-in allow list: `/tmp/**`, `/dev/**`, `~/.pi/agent/**`, `~/.cache/**`, `~/.bun/**`, `~/.npm/**`, `~/.local/share/**`.
 
-The check runs for file tools and for bash paths, after protected-path rules and before command rules. "Allow for this session" remembers the path, not the command.
+Only writes and deletes are checked. Reads outside the workspace are not gated, and `mode: block` does not stop them either; use a path rule for files that must never be read.
+
+"Allow for this session" remembers the directory of the approved path, including everything below it.
 
 ## Shipped rule sets
 
-| Set | File | Contents |
-|---|---|---|
-| `deny` | `policy/deny.json` | git history rewriting, `reflog expire`, `gc --prune=now` |
-| `basic` | `policy/basic.json` | `rm -r`, `sudo`, `dd of=`, `mkfs*`, `wipefs`, `blkdiscard`, `fdisk`/`parted`, `shred`, `chmod -R 777`, `chown -R`, privileged containers; plus `.env` and private key paths |
-| `strict` | `policy/strict.json` | git add/commit/push/merge, `reset --hard`, discard, `clean`, branch/tag/stash/worktree deletion, `rsync --delete`, `find -delete`, `xargs rm`, `truncate`, databases, terraform/kubectl/helm, docker volumes, publishing; allows `git push --force-with-lease` |
+The three sets and what they gate: [README](../README.md#shipped-rule-sets).
 
 ## Schema
 
-`schema.json` in the package root validates all of the above, with `additionalProperties: false`, so a misspelled field is reported instead of silently ignored. Point `$schema` at the installed copy or at the repository copy.
+`$schema` is optional and only helps editors. The loader reports field names it does not read as warnings.
 
 ## Warnings
 
 Problems in a config file are reported as notifications at load time and listed by `/permit`:
 
 - invalid JSON in a user file: that file is skipped;
+- unknown field name: reported and ignored by the loader;
 - unknown set name: skipped;
 - bad `argvRegex`: the rule is dropped and named in the warning;
-- a `deny` rule overridden by `ask` or `allow`: reported, since the safety floor just moved;
-- the shipped `policy/manifest.json` unreadable: the gate blocks every gated tool call with that path in the message.
+- a `deny` rule overridden by `ask` or `allow`: reported, since the safety floor just moved.

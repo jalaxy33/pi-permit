@@ -20,7 +20,6 @@ const KEYS: Record<string, Choice> = {
 
 const TOGGLE_KEYS = new Set(["o", "O", "\u000f"]);
 /** Enter accepts, matching the usual convention for confirmation prompts. */
-const ENTER_CHOICE: Choice = "allow";
 const ENTER_KEYS = new Set(["\r", "\n"]);
 const VIEWPORT_ROWS = 12;
 const EXPANDED_ROWS = 40;
@@ -78,23 +77,16 @@ const RAW_FG: Record<string, string> = { error: "91", warning: "93", dim: "90" }
 /** Theme colors, falling back to raw ANSI when the theme returns text unchanged. */
 function paint(theme: unknown) {
   const api = (theme ?? {}) as Theme;
-  const call = (fn: Theme["fg"], ...args: string[]): string | undefined => {
-    try {
-      return typeof fn === "function" ? fn(...args) : undefined;
-    } catch {
-      return undefined;
-    }
-  };
 
   const fg = (name: string, text: string): string => {
-    const themed = call(api.fg, name, text);
+    const themed = typeof api.fg === "function" ? api.fg(name, text) : undefined;
     if (themed && themed !== text) return themed;
     const code = RAW_FG[name];
     return code ? `\u001b[${code}m${text}\u001b[39m` : text;
   };
 
   const bold = (text: string): string => {
-    const themed = call(api.bold, text);
+    const themed = typeof api.bold === "function" ? api.bold(text) : undefined;
     return themed && themed !== text ? themed : `\u001b[1m${text}\u001b[22m`;
   };
 
@@ -172,10 +164,9 @@ function createPromptComponent(
       const below = rows.length - scroll - visible.length;
 
       const toggle = expanded ? "o collapse" : "o expand";
-      const allow = ENTER_CHOICE === "allow" ? "y/Enter allow" : "y allow · Enter deny";
       const variants = [
-        `${allow} · a session · n deny · s stop · esc cancel${maxScroll > 0 ? " · j/k scroll" : ""} · ${toggle}`,
-        `${allow} · a session · n deny · s stop · esc${maxScroll > 0 ? " · j/k" : ""} · ${toggle}`,
+        `y/Enter allow · a session · n deny · s stop · esc cancel${maxScroll > 0 ? " · j/k scroll" : ""} · ${toggle}`,
+        `y/Enter allow · a session · n deny · s stop · esc${maxScroll > 0 ? " · j/k" : ""} · ${toggle}`,
         `y/Enter · a · n · s${maxScroll > 0 ? " · j/k" : ""} · esc · ${toggle}`,
       ];
       const keyHint = variants.find((candidate) => candidate.length <= w - 2) ?? variants[variants.length - 1];
@@ -212,7 +203,7 @@ function createPromptComponent(
         return;
       }
       if (ENTER_KEYS.has(data) || matchesKey(data, Key.enter)) {
-        done(ENTER_CHOICE);
+        done("allow");
         return;
       }
       const choice = chooseFromKey(data);
@@ -232,8 +223,8 @@ export interface PromptRequest {
   reason: string;
   hasUI: boolean;
   grants: SessionGrants;
-  /** Session grant key; defaults to the command string. */
-  grantKey?: string;
+  /** Session grant keys; defaults to the command string. */
+  grantKeys?: string[];
   custom?: CustomPrompt;
   select?: SelectPrompt;
   abort: () => void;
@@ -243,21 +234,21 @@ function resolveChoice(choice: Choice | undefined, request: PromptRequest): Outc
   const { command, reason } = request;
   if (choice === "allow") return { block: false };
   if (choice === "allow-session") {
-    request.grants.add(request.grantKey ?? command);
+    for (const key of request.grantKeys ?? [command]) request.grants.add(key);
     return { block: false };
   }
   if (choice === "stop") {
     request.abort();
     return { block: true, reason: `pi-permit: denied and stopped (${reason})` };
   }
-  return { block: true, reason: `pi-permit: denied (${reason})` };
+  return { block: true, reason: `pi-permit: denied (${reason}). Ask the user instead of retrying.` };
 }
 
 export async function ask(request: PromptRequest): Promise<Outcome> {
   const { command, reason } = request;
 
   if (!request.hasUI) {
-    return { block: true, reason: `pi-permit (no UI to confirm): ${reason}` };
+    return { block: true, reason: `pi-permit (no UI to confirm): ${reason}. Ask the user to run it.` };
   }
 
   if (request.custom) {
@@ -276,5 +267,5 @@ export async function ask(request: PromptRequest): Promise<Outcome> {
     return resolveChoice(index >= 0 ? byIndex[index] : undefined, request);
   }
 
-  return { block: true, reason: `pi-permit (no UI to confirm): ${reason}` };
+  return { block: true, reason: `pi-permit (no UI to confirm): ${reason}. Ask the user to run it.` };
 }

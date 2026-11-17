@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import * as fs from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { parseArgs } from "./argv";
+import { parseArgs, type Args } from "./argv";
 import { expandTilde } from "./paths";
 import { type SimpleCommand, tokenize } from "./tokenize";
 import type { PathOp } from "./types";
@@ -103,14 +103,18 @@ function flagValueOf(token: string): string | undefined {
   return token.startsWith("-") && eq > 0 ? token.slice(eq + 1) : undefined;
 }
 
-/** cwd for the next command in the chain (`cd dir`, `pushd dir`). */
-export function cwdAfter(simple: SimpleCommand, cwd: string): string {
-  const args = parseArgs(simple.argv);
-  if (!args || (args.program !== "cd" && args.program !== "pushd")) return cwd;
+function cwdAfterArgs(args: Args, cwd: string): string {
+  if (args.program !== "cd" && args.program !== "pushd") return cwd;
   const target = args.positional[0];
   if (!target || target === "-") return cwd;
   const expanded = expandTilde(target);
   return isAbsolute(expanded) ? expanded : resolve(cwd, expanded);
+}
+
+/** cwd for the next command in the chain (`cd dir`, `pushd dir`). */
+export function cwdAfter(simple: SimpleCommand, cwd: string): string {
+  const args = parseArgs(simple.argv);
+  return args ? cwdAfterArgs(args, cwd) : cwd;
 }
 
 export interface PathTarget {
@@ -122,8 +126,10 @@ export interface PathTarget {
 
 export function extractTargets(simple: SimpleCommand, cwd: string): PathTarget[] {
   const args = parseArgs(simple.argv);
-  if (!args) return [];
+  return args ? targetsOf(args, simple, cwd) : [];
+}
 
+function targetsOf(args: Args, simple: SimpleCommand, cwd: string): PathTarget[] {
   const targets: PathTarget[] = [];
   const add = (value: string | undefined, op: PathOp) => {
     if (!value) return;
@@ -191,10 +197,8 @@ export function extractTargets(simple: SimpleCommand, cwd: string): PathTarget[]
 }
 
 /** Script text of `sh -c "..."`, so nested commands are checked too. */
-function nestedScript(simple: SimpleCommand): string | undefined {
-  const args = parseArgs(simple.argv);
-  if (!args || !SHELLS.has(args.program)) return undefined;
-  if (!args.flags.has("-c")) return undefined;
+function nestedScript(args: Args): string | undefined {
+  if (!SHELLS.has(args.program) || !args.flags.has("-c")) return undefined;
   return args.positional[0];
 }
 
@@ -204,10 +208,12 @@ export function collectTargets(command: string, cwd: string, depth = 0): PathTar
   let current = cwd;
 
   for (const simple of tokenize(command)) {
-    targets.push(...extractTargets(simple, current));
-    const script = nestedScript(simple);
+    const args = parseArgs(simple.argv);
+    if (!args) continue;
+    targets.push(...targetsOf(args, simple, current));
+    const script = nestedScript(args);
     if (script && depth < MAX_NESTING) targets.push(...collectTargets(script, current, depth + 1));
-    current = cwdAfter(simple, current);
+    current = cwdAfterArgs(args, current);
   }
 
   return targets;

@@ -3,8 +3,10 @@
  * Pure: no prompting, no session state — the caller acts on the verdict.
  */
 
+import { statSync } from "node:fs";
+import { dirname } from "node:path";
 import { decide } from "./decide";
-import { collectTargets } from "./ops";
+import { collectTargets, type PathTarget } from "./ops";
 import { checkOutside } from "./outside";
 import { checkPath } from "./paths";
 import type { PathOp, ResolvedConfig } from "./types";
@@ -20,22 +22,40 @@ const FILE_TOOL_OPS: Record<string, PathOp> = {
   edit: "write",
 };
 
-export interface GateTarget {
-  path: string;
-  op: PathOp;
-  basenameOnly?: boolean;
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** The session grant for an outside path covers its directory: a file one level up. */
+function outsideGrantKey(path: string): string {
+  return `outside:${isDirectory(path) ? path : dirname(path)}`;
+}
+
+/** A granted directory also covers everything below it. */
+function grantedOutside(path: string, hasGrant: (key: string) => boolean): boolean {
+  let dir = path;
+  while (true) {
+    if (hasGrant(`outside:${dir}`)) return true;
+    const parent = dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
 }
 
 export type GateDecision =
   | { kind: "allow" }
   | { kind: "block"; reason: string; terminate?: boolean }
-  | { kind: "prompt"; reason: string; label: string; grantKey?: string };
+  | { kind: "prompt"; reason: string; label: string; grantKeys: string[] };
 
 function toolTargets(
   toolName: string,
   input: Record<string, unknown>,
   cwd: string,
-): { paths: GateTarget[]; label: string } | undefined {
+): { paths: PathTarget[]; label: string; text?: string } | undefined {
   const fileOp = FILE_TOOL_OPS[toolName];
   if (fileOp) {
     const raw = String(input.path ?? input.file_path ?? "").trim();
@@ -46,13 +66,7 @@ function toolTargets(
   if (!GATED_TOOLS.has(toolName)) return undefined;
   const command = input.command;
   if (typeof command !== "string" || command.trim() === "") return undefined;
-  return { paths: collectTargets(command, cwd), label: command };
-}
-
-function command(toolName: string, input: Record<string, unknown>): string | undefined {
-  if (!GATED_TOOLS.has(toolName)) return undefined;
-  const value = input.command;
-  return typeof value === "string" && value.trim() !== "" ? value : undefined;
+  return { paths: collectTargets(command, cwd), label: command, text: command };
 }
 
 export function evaluate(
@@ -77,26 +91,28 @@ export function evaluate(
 
   if (targets) {
     for (const target of targets.paths) {
-      const hit = checkOutside(config.outside, target.path, cwd);
-      if (!hit) continue;
-      const grantKey = `outside:${hit.path}`;
-      if (hasGrant(grantKey)) break;
+      const hit = checkOutside(config.outside, target.path, cwd, target.op);
+      if (!hit || grantedOutside(hit.path, hasGrant)) continue;
       const reason = `outside workspace: ${hit.path}`;
       if (hit.mode === "block") return { kind: "block", reason: `pi-permit: ${reason}` };
-      return { kind: "prompt", reason, label: targets.label, grantKey };
+      return { kind: "prompt", reason, label: targets.label, grantKeys: [outsideGrantKey(hit.path)] };
     }
   }
 
   if (!config.enabled.commands) return { kind: "allow" };
-  const text = command(toolName, input);
-  if (!text || hasGrant(text)) return { kind: "allow" };
+  const text = targets?.text;
+  if (!text) return { kind: "allow" };
 
   const verdict = decide(text, config.commands);
   if (verdict.action === "allow") return { kind: "allow" };
+  if (verdict.action === "ask" && verdict.grants.length > 0 && verdict.grants.every(hasGrant)) {
+    return { kind: "allow" };
+  }
 
   const reason = verdict.reasons.join("; ") || "matched a permission rule";
   if (verdict.action === "deny") {
-    return { kind: "block", reason: `pi-permit: ${reason}`, terminate: verdict.terminate };
+    const hint = verdict.terminate ? "" : " Ask the user instead of retrying.";
+    return { kind: "block", reason: `pi-permit: ${reason}.${hint}`, terminate: verdict.terminate };
   }
-  return { kind: "prompt", reason, label: text };
+  return { kind: "prompt", reason, label: text, grantKeys: verdict.grants };
 }

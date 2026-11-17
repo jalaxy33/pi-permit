@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expandTilde } from "./paths";
-import type { CommandsSection, PathRule, Rule, RuleFile, Section } from "./types";
+import { checkFields, isObject } from "./validate";
+import { SECTIONS, type CommandsSection, type PathRule, type Rule, type RuleFile, type Section } from "./types";
 
 export interface Contribution {
   /** Logical name from `defaultRules` (set name or the path entry itself). */
@@ -32,8 +33,6 @@ export interface CollectedRules {
   paths: PathContribution[];
 }
 
-const SECTIONS: Section[] = ["deny", "ask", "allow"];
-
 export function defaultConfigPath(): string {
   return fileURLToPath(new URL("../policy/manifest.json", import.meta.url));
 }
@@ -51,7 +50,13 @@ export function readJson(path: string, warnings: string[]): RuleFile | undefined
     return undefined;
   }
   try {
-    return JSON.parse(raw) as RuleFile;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isObject(parsed)) {
+      warnings.push(`${path}: expected a JSON object`);
+      return undefined;
+    }
+    checkFields(parsed, path, warnings);
+    return parsed as RuleFile;
   } catch (error) {
     warnings.push(`${path}: invalid JSON (${(error as Error).message})`);
     return undefined;
@@ -104,12 +109,8 @@ export function collectContributions(
   const baseDir = dirname(manifestPath);
   const collected: CollectedRules = { commands: [], paths: [] };
   const drop = (set: string) => {
-    for (let i = collected.commands.length - 1; i >= 0; i--) {
-      if (collected.commands[i]?.set === set) collected.commands.splice(i, 1);
-    }
-    for (let i = collected.paths.length - 1; i >= 0; i--) {
-      if (collected.paths[i]?.set === set) collected.paths.splice(i, 1);
-    }
+    collected.commands = collected.commands.filter((item) => item.set !== set);
+    collected.paths = collected.paths.filter((item) => item.set !== set);
   };
 
   for (const raw of entries) {

@@ -11,7 +11,7 @@ import {
   resolveContributions,
   resolvePathContributions,
 } from "./rulesets";
-import type { ConfigFile, PathRule, ResolvedConfig, Section } from "./types";
+import { SECTIONS, type ConfigFile, type PathRule, type ResolvedConfig } from "./types";
 
 export function globalConfigPath(): string {
   return join(homedir(), ".pi", "agent", "permit.json");
@@ -20,8 +20,6 @@ export function globalConfigPath(): string {
 export function projectConfigPath(cwd: string): string {
   return join(cwd, ".pi", "permit.json");
 }
-
-const SECTIONS: Section[] = ["deny", "ask", "allow"];
 
 /** Later scopes win field by field. */
 function pickOutside(scopes: ConfigFile[]) {
@@ -35,6 +33,24 @@ function pickOutside(scopes: ConfigFile[]) {
 
 function pathRulesOf(config: ConfigFile): PathRule[] {
   return Array.isArray(config.paths) ? config.paths : [];
+}
+
+/** Adds the rules a config file contributes: its `defaultRules` first, then its own rules. */
+function collectFrom(
+  collected: CollectedRules,
+  file: ConfigFile,
+  path: string,
+  warnings: string[],
+): void {
+  const nested = collectContributions(file.defaultRules ?? [], file, path, warnings);
+  collected.commands.push(...nested.commands);
+  collected.paths.push(...nested.paths);
+  for (const section of SECTIONS) {
+    for (const rule of file.commands?.[section] ?? []) {
+      collected.commands.push({ set: path, section, rule, source: path });
+    }
+  }
+  for (const rule of pathRulesOf(file)) collected.paths.push({ set: path, rule, source: path });
 }
 
 export function loadConfig(cwd: string, trusted: boolean): ResolvedConfig {
@@ -56,31 +72,19 @@ export function loadConfig(cwd: string, trusted: boolean): ResolvedConfig {
   }
   sources.push(builtinPath);
 
-  const collected: CollectedRules = collectContributions(builtin.defaultRules ?? [], builtin, builtinPath, warnings);
-
-  const scopes: Array<{ path: string; config: ConfigFile | undefined }> = [
-    { path: globalConfigPath(), config: readJson(globalConfigPath(), warnings) },
-  ];
-  if (trusted) {
-    scopes.push({ path: projectConfigPath(cwd), config: readJson(projectConfigPath(cwd), warnings) });
-  }
+  const collected: CollectedRules = { commands: [], paths: [] };
+  collectFrom(collected, builtin, builtinPath, warnings);
 
   const userScopes: ConfigFile[] = [];
-  for (const scope of scopes) {
-    if (!scope.config) continue;
-    userScopes.push(scope.config);
-    sources.push(scope.path);
-    const scopeCollected = collectContributions(scope.config.defaultRules ?? [], scope.config, scope.path, warnings);
-    collected.commands.push(...scopeCollected.commands);
-    collected.paths.push(...scopeCollected.paths);
-    for (const section of SECTIONS) {
-      for (const rule of scope.config.commands?.[section] ?? []) {
-        collected.commands.push({ set: scope.path, section, rule, source: scope.path });
-      }
-    }
-    for (const rule of pathRulesOf(scope.config)) {
-      collected.paths.push({ set: scope.path, rule, source: scope.path });
-    }
+  const scopePaths = [globalConfigPath()];
+  if (trusted) scopePaths.push(projectConfigPath(cwd));
+
+  for (const path of scopePaths) {
+    const file = readJson(path, warnings);
+    if (!file) continue;
+    userScopes.push(file);
+    sources.push(path);
+    collectFrom(collected, file, path, warnings);
   }
 
   const resolvedPaths = resolvePathContributions(collected.paths);

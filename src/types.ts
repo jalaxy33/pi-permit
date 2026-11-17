@@ -1,4 +1,8 @@
+import type { OutsideRule } from "./outside";
+
 export type Section = "deny" | "ask" | "allow";
+
+export const SECTIONS: Section[] = ["deny", "ask", "allow"];
 
 export interface Rule {
   id: string;
@@ -39,6 +43,8 @@ export type Action = "allow" | "ask" | "deny";
 export interface Verdict {
   action: Action;
   reasons: string[];
+  /** Session grant keys of the matched ask rules. */
+  grants: string[];
   terminate: boolean;
 }
 
@@ -72,8 +78,6 @@ export interface ConfigFile extends RuleFile {
   enabled?: { commands?: boolean; paths?: boolean };
   outsideCwd?: OutsideCwdConfig;
 }
-
-import type { OutsideRule } from "./outside";
 
 export type PathOp = "read" | "write" | "delete";
 export type Protection = "block" | "read-only";

@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import permit from "../index";
 
-function setup(options: { hasUI: boolean; keys?: string[] }) {
+function setup(options: { hasUI: boolean; keys?: string[]; mode?: string }) {
   const handlers: Function[] = [];
   const commands: string[] = [];
   const asked: string[] = [];
@@ -25,6 +25,7 @@ function setup(options: { hasUI: boolean; keys?: string[] }) {
 
   const ctx: any = {
     cwd: "/tmp",
+    mode: options.mode ?? "tui",
     hasUI: options.hasUI,
     isProjectTrusted: () => false,
     abort: () => {
@@ -93,11 +94,11 @@ describe("extension", () => {
     expect(env.asked.length).toBe(2);
   });
 
-  test("session grant skips later prompts for the same command", async () => {
+  test("session grant skips later prompts for the same rule and flags", async () => {
     const env = setup({ hasUI: true, keys: ["a"] });
     await permit(env.stub);
     expect(await env.call("rm -r build")).toBeUndefined();
-    expect(await env.call("rm -r build")).toBeUndefined();
+    expect(await env.call("rm -r dist")).toBeUndefined();
     expect(env.asked.length).toBe(1);
   });
 
@@ -107,6 +108,7 @@ describe("extension", () => {
     const result = await env.call("npm publish");
     expect(result?.block).toBe(true);
     expect(result?.terminate).toBeUndefined();
+    expect(result?.reason).toContain("Ask the user instead of retrying");
     expect(env.aborted()).toBe(0);
   });
 
@@ -116,6 +118,14 @@ describe("extension", () => {
     const result = await env.call("npm publish");
     expect(result?.block).toBe(true);
     expect(env.aborted()).toBe(1);
+  });
+
+  test("asks through a dialog in RPC mode", async () => {
+    const env = setup({ hasUI: true, mode: "rpc" });
+    await permit(env.stub);
+    const result = await env.call("npm publish");
+    expect(result?.block).toBe(true);
+    expect(env.asked.join("\n")).toContain("npm publish");
   });
 
   test("deny rules block with terminate and without a prompt", async () => {
@@ -191,27 +201,34 @@ describe("path rules", () => {
 describe("outside workspace gate", () => {
   const outside = join(homedir(), "pi-permit-outside-file.txt");
 
-  test("asks before reading outside the workspace", async () => {
+  test("asks before writing outside the workspace", async () => {
     const env = setup({ hasUI: true, keys: ["n"] });
     await permit(env.stub);
-    const result = await env.callTool("read", { path: outside });
+    const result = await env.callTool("write", { path: outside });
     expect(result?.block).toBe(true);
     expect(result?.reason).toContain("outside workspace");
     expect(env.asked.length).toBe(1);
   });
 
-  test("allows the same read when the prompt is approved", async () => {
+  test("allows the same write when the prompt is approved", async () => {
     const env = setup({ hasUI: true, keys: ["y"] });
     await permit(env.stub);
-    expect(await env.callTool("read", { path: outside })).toBeUndefined();
+    expect(await env.callTool("write", { path: outside })).toBeUndefined();
   });
 
-  test("a session grant covers later reads of the same path", async () => {
+  test("a session grant covers the directory", async () => {
     const env = setup({ hasUI: true, keys: ["a"] });
     await permit(env.stub);
-    expect(await env.callTool("read", { path: outside })).toBeUndefined();
-    expect(await env.callTool("read", { path: outside })).toBeUndefined();
+    expect(await env.callTool("write", { path: outside })).toBeUndefined();
+    expect(await env.callTool("write", { path: join(homedir(), "other.txt") })).toBeUndefined();
     expect(env.asked.length).toBe(1);
+  });
+
+  test("reads outside the workspace do not prompt", async () => {
+    const env = setup({ hasUI: true, keys: [] });
+    await permit(env.stub);
+    expect(await env.callTool("read", { path: outside })).toBeUndefined();
+    expect(env.asked).toEqual([]);
   });
 
   test("does not prompt for paths inside the workspace", async () => {
@@ -224,6 +241,6 @@ describe("outside workspace gate", () => {
   test("blocks without a UI", async () => {
     const env = setup({ hasUI: false });
     await permit(env.stub);
-    expect((await env.callTool("read", { path: outside }))?.block).toBe(true);
+    expect((await env.callTool("write", { path: outside }))?.block).toBe(true);
   });
 });

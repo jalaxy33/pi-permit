@@ -2,7 +2,7 @@
 
 import { isAbsolute, sep } from "node:path";
 import { expandTilde, globToRegExp, resolveCandidate } from "./paths";
-import type { OutsideCwdConfig } from "./types";
+import type { OutsideCwdConfig, PathOp } from "./types";
 
 export type OutsideMode = "allow" | "ask" | "block";
 
@@ -46,9 +46,17 @@ export interface OutsideHit {
   mode: OutsideMode;
 }
 
-/** Returns a hit when the path is outside the workspace and not explicitly allowed. */
-export function checkOutside(rule: OutsideRule, rawPath: string, cwd: string): OutsideHit | undefined {
-  if (rule.mode === "allow") return undefined;
+/**
+ * Returns a hit when the path is outside the workspace and not explicitly allowed.
+ * Reads are not gated here; path rules cover files that must never be read.
+ */
+export function checkOutside(
+  rule: OutsideRule,
+  rawPath: string,
+  cwd: string,
+  op: PathOp,
+): OutsideHit | undefined {
+  if (rule.mode === "allow" || op === "read") return undefined;
 
   const candidate = resolveCandidate(rawPath, cwd);
   const outside = !insideCwd(candidate.abs, cwd) && (candidate.real ? !insideCwd(candidate.real, cwd) : true);

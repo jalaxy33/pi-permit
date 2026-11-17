@@ -18,14 +18,18 @@ export default async function permit(pi: ExtensionAPI) {
   });
 
   const confirm = (
-    ctx: { hasUI: boolean; ui: any; abort: () => void },
-    request: { command: string; reason: string; grantKey?: string },
+    ctx: { hasUI: boolean; mode: string; ui: any; abort: () => void },
+    request: { command: string; reason: string; grantKeys: string[] },
   ) =>
     ask({
       ...request,
       hasUI: ctx.hasUI,
       grants: sessionGrants,
-      custom: typeof ctx.ui.custom === "function" ? (factory: unknown) => ctx.ui.custom(factory) : undefined,
+      // RPC has a no-op custom(); its dialogs go through select().
+      custom:
+        ctx.mode === "tui" && typeof ctx.ui.custom === "function"
+          ? (factory: unknown) => ctx.ui.custom(factory)
+          : undefined,
       select: (title, options) => ctx.ui.select(title, options),
       abort: () => ctx.abort(),
     });
@@ -41,17 +45,13 @@ export default async function permit(pi: ExtensionAPI) {
 
     if (decision.kind === "allow") return;
     if (decision.kind === "block") {
-      return {
-        block: true,
-        reason: decision.reason,
-        ...(decision.terminate ? { terminate: true } : {}),
-      };
+      return { block: true, reason: decision.reason, terminate: decision.terminate };
     }
 
     const outcome = await confirm(ctx, {
       command: decision.label,
       reason: decision.reason,
-      grantKey: decision.grantKey,
+      grantKeys: decision.grantKeys,
     });
     return outcome.block ? { block: true, reason: outcome.reason } : undefined;
   });
@@ -65,9 +65,10 @@ export default async function permit(pi: ExtensionAPI) {
           `pi-permit: ${deny.length} deny / ${askRules.length} ask / ${allow.length} allow rules, ${config.paths.length} path rules`,
           `sources: ${config.sources.length > 0 ? config.sources.join(", ") : "defaults only"}`,
           `session grants: ${sessionGrants.size}`,
+          ...(config.warnings.length > 0 ? [`warnings:\n  ${config.warnings.join("\n  ")}`] : []),
           ...(config.fatal ? [config.fatal] : []),
         ].join("\n"),
-        config.fatal ? "error" : "info",
+        config.fatal ? "error" : config.warnings.length > 0 ? "warning" : "info",
       );
     },
   });

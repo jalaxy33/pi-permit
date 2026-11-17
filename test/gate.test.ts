@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { loadConfig } from "../src/config";
 import { evaluate } from "../src/gate";
 
@@ -11,6 +11,7 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const config = loadConfig(dir, false);
 const outside = join(homedir(), "pi-permit-gate-outside.txt");
+const outsideDir = dirname(outside);
 
 const run = (toolName: string, input: Record<string, unknown>, grants: string[] = []) =>
   evaluate(config, toolName, input, dir, (key) => grants.includes(key));
@@ -32,8 +33,25 @@ describe("command gate", () => {
   });
 
   test("session grants skip the prompt", () => {
-    expect(run("bash", { command: "git push origin main" }, ["git push origin main"])).toEqual({
+    expect(run("bash", { command: "git push origin main" }, ["rule:git-push:"])).toEqual({
       kind: "allow",
+    });
+  });
+
+  test("a grant covers the same rule and flags only", () => {
+    expect(run("bash", { command: "git push --force origin main" }, ["rule:git-push:"])).toMatchObject({
+      kind: "prompt",
+    });
+  });
+
+  test("prompts carry the grant keys of the matched rules", () => {
+    const decision = run("bash", { command: "rm -r build" });
+    expect(decision).toMatchObject({ kind: "prompt", grantKeys: ["rule:rm-recursive:-r"] });
+  });
+
+  test("a granted ask rule does not lift a deny rule elsewhere in the chain", () => {
+    expect(run("bash", { command: "git push && git filter-repo --force" }, ["rule:git-push:"])).toMatchObject({
+      kind: "block",
     });
   });
 
@@ -62,22 +80,32 @@ describe("path rules", () => {
 
 describe("outside workspace", () => {
   test("prompts with a grant key", () => {
-    const decision = run("read", { path: outside });
+    const decision = run("write", { path: outside });
     expect(decision).toEqual({
       kind: "prompt",
       reason: `outside workspace: ${outside}`,
-      label: `read ${outside}`,
-      grantKey: `outside:${outside}`,
+      label: `write ${outside}`,
+      grantKeys: [`outside:${outsideDir}`],
     });
   });
 
-  test("an outside grant allows the path", () => {
-    expect(run("read", { path: outside }, [`outside:${outside}`])).toEqual({ kind: "allow" });
+  test("reads outside the workspace pass", () => {
+    expect(run("read", { path: outside })).toEqual({ kind: "allow" });
+  });
+
+  test("an outside grant allows the directory and below it", () => {
+    expect(run("write", { path: outside }, [`outside:${outsideDir}`])).toEqual({ kind: "allow" });
+    expect(run("write", { path: join(outsideDir, "sibling.txt") }, [`outside:${outsideDir}`])).toEqual({
+      kind: "allow",
+    });
+    expect(run("write", { path: join(outsideDir, "nested", "deeper.txt") }, [`outside:${outsideDir}`])).toEqual({
+      kind: "allow",
+    });
   });
 
   test("mode block rejects without prompting", () => {
     const strict = { ...config, outside: { ...config.outside, mode: "block" as const } };
-    expect(evaluate(strict, "read", { path: outside }, dir).kind).toBe("block");
+    expect(evaluate(strict, "write", { path: outside }, dir).kind).toBe("block");
   });
 
   test("paths inside the workspace pass", () => {
